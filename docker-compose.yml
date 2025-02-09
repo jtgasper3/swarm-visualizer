@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  swarm-monitor:
+    image: swarm-monitor:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+    restart: always
