@@ -11,6 +11,8 @@
     <link href="https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.min.css" rel="stylesheet">
     <!-- Add Material Design Icons -->
     <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
+    <!-- Load the Nodes component JavaScript -->
+    <script src="nodes.js" type="module"></script>
 </head>
 <body>
     <div id="app">
@@ -39,25 +41,7 @@
                                             </v-list>
                                         </v-col>
                                         <v-col cols="6">
-                                            <v-list>
-                                                <v-subheader>Nodes</v-subheader>
-                                                <v-list-item-group>
-                                                    <v-list-item v-for="node in nodes" :key="node.id">
-                                                        <v-list-item-content>
-                                                            <v-list-item-title>{{ node.hostname }}</v-list-item-title>
-                                                            <v-list-item-subtitle>{{ node.status }}</v-list-item-subtitle>
-                                                            <v-list>
-                                                                <v-list-item v-for="task in node.tasks" :key="task.id">
-                                                                    <v-list-item-content>
-                                                                        <v-list-item-title>{{ task.name }}</v-list-item-title>
-                                                                        <v-list-item-subtitle>{{ task.status }}</v-list-item-subtitle>
-                                                                    </v-list-item-content>
-                                                                </v-list-item>
-                                                            </v-list>
-                                                        </v-list-item-content>
-                                                    </v-list-item>
-                                                </v-list-item-group>
-                                            </v-list>
+                                          <Nodes :nodes="nodes" />
                                         </v-col>
                                     </v-row>
                                 </v-card-text>
@@ -69,7 +53,8 @@
         </v-app>
     </div>
 
-    <script>
+    <script type="module">
+        import Nodes from './nodes.js';
         const { createApp } = Vue;
         const { createVuetify } = Vuetify;
 

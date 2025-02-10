@@ -26,7 +26,7 @@ USER root
 
 # Copy the binary from the build stage
 COPY --from=builder /app/swarm-monitor /swarm-monitor
-COPY index.html /
+COPY static/ /static
 
 # Expose port 8080
 EXPOSE 8080

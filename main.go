@@ -50,11 +50,12 @@ func main() {
 	// Start inspecting Swarm services in a separate goroutine
 	go inspectSwarmServices()
 
+	// Serve static files from the "./static" directory
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/", fs)
+
 	// Handle WebSocket connections
 	http.HandleFunc("/ws", handleConnections)
-
-	// Serve the HTML page
-	http.HandleFunc("/", serveHome)
 
 	// Start broadcasting messages to clients
 	go handleMessages()
@@ -223,8 +224,4 @@ func inspectSwarmServices() {
 		// Wait for 10 seconds before the next fetch
 		time.Sleep(10 * time.Second)
 	}
-}
-
-func serveHome(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "index.html")
 }
