@@ -5,8 +5,11 @@
     <title>Docker Swarm Services Monitor</title>
 </head>
 <body>
-    <h1>Docker Swarm Services Monitor</h1>
-    <p>Open the console to see the service updates.</p>
+    <h1>Docker Swarm Monitor</h1>
+    <ul id="nodes"></ul>
+    <ul id="services"></ul>
+    <ul id="tasks"></ul>
+
     <script type="text/javascript">
         var ws = new WebSocket('ws://' + window.location.host + '/ws');
 
@@ -15,9 +18,35 @@
         };
 
         ws.onmessage = function(event) {
-            console.log('Received data:', event.data);
-            var services = JSON.parse(event.data);
-            console.log('Parsed services:', services);
+            console.log(event.data)
+            var data = JSON.parse(event.data);
+            
+            var servicesList = document.getElementById('services');
+            servicesList.innerHTML = ''; // Clear the list
+
+            data.services.forEach(function(service) {
+                var listItem = document.createElement('li');
+                listItem.textContent = service.Spec.Name + ' (Mode: ' + (service.Spec.Mode.Replicated ? 'Replicated' : 'Global') + ')';
+                servicesList.appendChild(listItem);
+            });
+
+            var nodesList = document.getElementById('nodes');
+            nodesList.innerHTML = ''; // Clear the list
+
+            data.nodes.forEach(function(node) {
+                var listItem = document.createElement('li');
+                listItem.textContent = node.ID + ' (Role: ' + (node.Spec.Role) + ')';
+                nodesList.appendChild(listItem);
+            });
+
+            var tasksList = document.getElementById('tasks');
+            tasksList.innerHTML = ''; // Clear the list
+
+            data.tasks.forEach(function(task) {
+                var listItem = document.createElement('li');
+                listItem.textContent = task.ID + ' (Node: ' + (task.NodeID) + ')';
+                tasksList.appendChild(listItem);
+            });
         };
 
         ws.onclose = function() {
