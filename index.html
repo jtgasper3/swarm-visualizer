@@ -26,7 +26,7 @@
 
             data.services.forEach(function(service) {
                 var listItem = document.createElement('li');
-                listItem.textContent = service.Spec.Name + ' (Mode: ' + (service.Spec.Mode.Replicated ? 'Replicated' : 'Global') + ')';
+                listItem.textContent = service.Spec.Name + ' (' + service.ID + ', Mode: ' + (service.Spec.Mode.Replicated ? 'Replicated' : 'Global') + ')';
                 servicesList.appendChild(listItem);
             });
 
@@ -35,7 +35,7 @@
 
             data.nodes.forEach(function(node) {
                 var listItem = document.createElement('li');
-                listItem.textContent = node.ID + ' (Role: ' + (node.Spec.Role) + ')';
+                listItem.textContent = node.Description.Hostname + ' (' + node.ID + ' Role: ' + (node.Spec.Role) + ')';
                 nodesList.appendChild(listItem);
             });
 
@@ -44,7 +44,7 @@
 
             data.tasks.forEach(function(task) {
                 var listItem = document.createElement('li');
-                listItem.textContent = task.ID + ' (Node: ' + (task.NodeID) + ')';
+                listItem.textContent = task.ID + ' (Node: ' + (task.NodeID) + ', Service: ' + (task.ServiceID) + ')';
                 tasksList.appendChild(listItem);
             });
         };

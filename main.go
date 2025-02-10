@@ -5,27 +5,45 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
 )
 
+type ServiceViewModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Mode string `json:"mode"`
+}
+
+type NodeViewModel struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Status   string `json:"status"`
+}
+
+type TaskViewModel struct {
+	ID        string `json:"id"`
+	NodeID    string `json:"nodeId"`
+	ServiceID string `json:"serviceId"`
+}
+
 type SwarmData struct {
-	Nodes    []swarm.Node    `json:"nodes"`
-	Services []swarm.Service `json:"services"`
-	Tasks    []swarm.Task    `json:"tasks"`
+	Nodes    []NodeViewModel    `json:"nodes"`
+	Services []ServiceViewModel `json:"services"`
+	Tasks    []TaskViewModel    `json:"tasks"`
 }
 
 var (
-	upgrader  = websocket.Upgrader{}
-	clients   = make(map[*websocket.Conn]bool)
-	broadcast = make(chan []byte)
-	last_msg  []byte
-	mu        sync.Mutex
+	upgrader            = websocket.Upgrader{}
+	clients             = make(map[*websocket.Conn]bool)
+	broadcast           = make(chan []byte)
+	lastBroadcastedData *SwarmData
+	mu                  sync.Mutex
 )
 
 func main() {
@@ -61,7 +79,15 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	// Register new client
 	mu.Lock()
 	clients[ws] = true
-	err = ws.WriteMessage(websocket.TextMessage, last_msg)
+
+	// Marshal the combined data into JSON
+	data, err := json.Marshal(lastBroadcastedData)
+	if err != nil {
+		log.Println("Error marshalling combined data:", err)
+	}
+
+	// Send the last message
+	err = ws.WriteMessage(websocket.TextMessage, data)
 	if err != nil {
 		log.Printf("Write error: %v", err)
 		ws.Close()
@@ -88,9 +114,8 @@ func handleMessages() {
 		// Grab the next message from the broadcast channel
 		msg := <-broadcast
 
-		// Cache it for new clients and send it to every connected client
+		// Send it to every connected client
 		mu.Lock()
-		last_msg = msg
 
 		for client := range clients {
 			err := client.WriteMessage(websocket.TextMessage, msg)
@@ -105,7 +130,7 @@ func handleMessages() {
 }
 
 func inspectSwarmServices() {
-	cli, err := client.NewClientWithOpts(client.WithHost(client.DefaultDockerHost))
+	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		log.Fatal("Docker client error:", err)
 	}
@@ -119,6 +144,7 @@ func inspectSwarmServices() {
 			continue
 		}
 
+		// Fetch the list of Swarm nodes
 		nodes, err := cli.NodeList(context.Background(), types.NodeListOptions{})
 		if err != nil {
 			log.Println("Error fetching nodes:", err)
@@ -126,27 +152,73 @@ func inspectSwarmServices() {
 			continue
 		}
 
+		// Fetch the list of Swarm tasks
 		tasks, err := cli.TaskList(context.Background(), types.TaskListOptions{})
 		if err != nil {
-			log.Println("Error fetching tasks:", err)
+			log.Println("Error fetching task:", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
 
-		// combine the two
-		info := SwarmData{nodes, services, tasks}
-
-		// Marshal the services into JSON
-		data, err := json.Marshal(info)
-
-		if err != nil {
-			log.Println("Error marshalling swarm info:", err)
-			time.Sleep(10 * time.Second)
-			continue
+		// Map services to ServiceViewModel
+		var serviceViewModels []ServiceViewModel
+		for _, service := range services {
+			mode := "Unknown"
+			if service.Spec.Mode.Replicated != nil {
+				mode = "Replicated"
+			} else if service.Spec.Mode.Global != nil {
+				mode = "Global"
+			}
+			serviceViewModels = append(serviceViewModels, ServiceViewModel{
+				ID:   service.ID,
+				Name: service.Spec.Name,
+				Mode: mode,
+			})
 		}
 
-		// Send the data to the broadcast channel
-		broadcast <- data
+		// Map nodes to NodeViewModel
+		var nodeViewModels []NodeViewModel
+		for _, node := range nodes {
+			nodeViewModels = append(nodeViewModels, NodeViewModel{
+				ID:       node.ID,
+				Hostname: node.Description.Hostname,
+				Status:   string(node.Status.State),
+			})
+		}
+
+		// Map nodes to NodeViewModel
+		var taskViewModels []TaskViewModel
+		for _, task := range tasks {
+			taskViewModels = append(taskViewModels, TaskViewModel{
+				ID:        task.ID,
+				NodeID:    task.NodeID,
+				ServiceID: task.ServiceID,
+			})
+		}
+
+		// Combine services and nodes into a single struct
+		data := SwarmData{
+			Services: serviceViewModels,
+			Nodes:    nodeViewModels,
+			Tasks:    taskViewModels,
+		}
+
+		// Compare the new data with the last broadcasted data
+		if lastBroadcastedData == nil || !reflect.DeepEqual(data, *lastBroadcastedData) {
+			// Update the last broadcasted data
+			lastBroadcastedData = &data
+
+			// Marshal the combined data into JSON
+			jsonData, err := json.Marshal(data)
+			if err != nil {
+				log.Println("Error marshalling combined data:", err)
+				time.Sleep(10 * time.Second)
+				continue
+			}
+
+			// Send the combined JSON data to the broadcast channel
+			broadcast <- jsonData
+		}
 
 		// Wait for 10 seconds before the next fetch
 		time.Sleep(10 * time.Second)
