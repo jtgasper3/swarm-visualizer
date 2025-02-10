@@ -2,60 +2,116 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Docker Swarm Services Monitor</title>
+    <title>Docker Swarm Monitor</title>
+    <!-- Add Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3"></script>
+    <!-- Add Vuetify 3 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.min.js"></script>
+    <!-- Add Vuetify CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.min.css" rel="stylesheet">
+    <!-- Add Material Design Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Docker Swarm Monitor</h1>
-    <ul id="nodes"></ul>
-    <ul id="services"></ul>
-    <ul id="tasks"></ul>
+    <div id="app">
+        <v-app>
+            <v-main>
+                <v-container>
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title>
+                                    Docker Swarm Monitor
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col cols="6">
+                                            <v-list>
+                                                <v-subheader>Services</v-subheader>
+                                                <v-list-item-group>
+                                                    <v-list-item v-for="service in services" :key="service.id">
+                                                        <v-list-item-content>
+                                                            <v-list-item-title>{{ service.name }}</v-list-item-title>
+                                                            <v-list-item-subtitle>{{ service.mode }}</v-list-item-subtitle>
+                                                        </v-list-item-content>
+                                                    </v-list-item>
+                                                </v-list-item-group>
+                                            </v-list>
+                                        </v-col>
+                                        <v-col cols="6">
+                                            <v-list>
+                                                <v-subheader>Nodes</v-subheader>
+                                                <v-list-item-group>
+                                                    <v-list-item v-for="node in nodes" :key="node.id">
+                                                        <v-list-item-content>
+                                                            <v-list-item-title>{{ node.hostname }}</v-list-item-title>
+                                                            <v-list-item-subtitle>{{ node.status }}</v-list-item-subtitle>
+                                                            <v-list>
+                                                                <v-list-item v-for="task in node.tasks" :key="task.id">
+                                                                    <v-list-item-content>
+                                                                        <v-list-item-title>{{ task.name }}</v-list-item-title>
+                                                                        <v-list-item-subtitle>{{ task.status }}</v-list-item-subtitle>
+                                                                    </v-list-item-content>
+                                                                </v-list-item>
+                                                            </v-list>
+                                                        </v-list-item-content>
+                                                    </v-list-item>
+                                                </v-list-item-group>
+                                            </v-list>
+                                        </v-col>
+                                    </v-row>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </v-container>
+            </v-main>
+        </v-app>
+    </div>
 
-    <script type="text/javascript">
-        var ws = new WebSocket('ws://' + window.location.host + '/ws');
+    <script>
+        const { createApp } = Vue;
+        const { createVuetify } = Vuetify;
 
-        ws.onopen = function() {
-            console.log('WebSocket connection established');
-        };
+        const vuetify = createVuetify();
 
-        ws.onmessage = function(event) {
-            console.log(event.data)
-            var data = JSON.parse(event.data);
-            
-            var servicesList = document.getElementById('services');
-            servicesList.innerHTML = ''; // Clear the list
+        createApp({
+            data() {
+                return {
+                    services: [],
+                    nodes: []
+                };
+            },
+            mounted() {
+                this.connectWebSocket();
+            },
+            methods: {
+                connectWebSocket() {
+                    const ws = new WebSocket('ws://' + window.location.host + '/ws');
 
-            data.services.forEach(function(service) {
-                var listItem = document.createElement('li');
-                listItem.textContent = service.Spec.Name + ' (' + service.ID + ', Mode: ' + (service.Spec.Mode.Replicated ? 'Replicated' : 'Global') + ')';
-                servicesList.appendChild(listItem);
-            });
+                    ws.onopen = () => {
+                        console.log('WebSocket connection established');
+                    };
 
-            var nodesList = document.getElementById('nodes');
-            nodesList.innerHTML = ''; // Clear the list
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.services = data.services;
+                        this.nodes = data.nodes.map(node => {
+                            node.tasks = data.tasks.filter(task => task.nodeID === node.ID);
+                            return node;
+                        });
+                    };
 
-            data.nodes.forEach(function(node) {
-                var listItem = document.createElement('li');
-                listItem.textContent = node.Description.Hostname + ' (' + node.ID + ' Role: ' + (node.Spec.Role) + ')';
-                nodesList.appendChild(listItem);
-            });
+                    ws.onclose = () => {
+                        console.log('WebSocket connection closed');
+                    };
 
-            var tasksList = document.getElementById('tasks');
-            tasksList.innerHTML = ''; // Clear the list
-
-            data.tasks.forEach(function(task) {
-                var listItem = document.createElement('li');
-                listItem.textContent = task.ID + ' (Node: ' + (task.NodeID) + ', Service: ' + (task.ServiceID) + ')';
-                tasksList.appendChild(listItem);
-            });
-        };
-
-        ws.onclose = function() {
-            console.log('WebSocket connection closed');
-        };
-
-        ws.onerror = function(error) {
-            console.error('WebSocket error:', error);
-        };
+                    ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                }
+            }
+        }).use(vuetify).mount('#app');
     </script>
 </body>
 </html>
