@@ -5,40 +5,53 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"reflect"
 	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
 )
 
-type ServiceViewModel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Mode string `json:"mode"`
+type NodeViewModel struct {
+	ID                   string `json:"id"`
+	Hostname             string `json:"hostname"`
+	Name                 string `json:"name"`
+	Role                 string `json:"role"`
+	PlatformArchitecture string `json:"platformArchitecture"`
+	MemoryBytes          int64  `json:"memoryBytes"`
+	Status               string `json:"status"`
 }
 
-type NodeViewModel struct {
-	ID       string `json:"id"`
-	Hostname string `json:"hostname"`
-	Status   string `json:"status"`
+type ServiceViewModel struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Image string `json:"image"`
+	Mode  string `json:"mode"`
 }
 
 type TaskViewModel struct {
-	ID        string `json:"id"`
-	NodeID    string `json:"nodeId"`
-	ServiceID string `json:"serviceId"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	NodeID       string    `json:"nodeId"`
+	ServiceID    string    `json:"serviceId"`
+	DesiredState string    `json:"desiredState"`
+	State        string    `json:"state"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type SwarmData struct {
-	Nodes    []NodeViewModel    `json:"nodes"`
-	Services []ServiceViewModel `json:"services"`
-	Tasks    []TaskViewModel    `json:"tasks"`
+	ClusterName string             `json:"clusterName"`
+	Nodes       []NodeViewModel    `json:"nodes"`
+	Services    []ServiceViewModel `json:"services"`
+	Tasks       []TaskViewModel    `json:"tasks"`
 }
 
 var (
+	clusterName         string
 	upgrader            = websocket.Upgrader{}
 	clients             = make(map[*websocket.Conn]bool)
 	broadcast           = make(chan []byte)
@@ -47,6 +60,8 @@ var (
 )
 
 func main() {
+	clusterName = os.Getenv("CLUSTER_NAME")
+
 	// Start inspecting Swarm services in a separate goroutine
 	go inspectSwarmServices()
 
@@ -154,36 +169,26 @@ func inspectSwarmServices() {
 		}
 
 		// Fetch the list of Swarm tasks
-		tasks, err := cli.TaskList(context.Background(), types.TaskListOptions{})
+		filterArgs := filters.NewArgs()
+		filterArgs.Add("desired-state", "running")
+		tasks, err := cli.TaskList(context.Background(), types.TaskListOptions{Filters: filterArgs})
 		if err != nil {
 			log.Println("Error fetching task:", err)
 			time.Sleep(10 * time.Second)
 			continue
 		}
 
-		// Map services to ServiceViewModel
-		var serviceViewModels []ServiceViewModel
-		for _, service := range services {
-			mode := "Unknown"
-			if service.Spec.Mode.Replicated != nil {
-				mode = "Replicated"
-			} else if service.Spec.Mode.Global != nil {
-				mode = "Global"
-			}
-			serviceViewModels = append(serviceViewModels, ServiceViewModel{
-				ID:   service.ID,
-				Name: service.Spec.Name,
-				Mode: mode,
-			})
-		}
-
 		// Map nodes to NodeViewModel
 		var nodeViewModels []NodeViewModel
 		for _, node := range nodes {
 			nodeViewModels = append(nodeViewModels, NodeViewModel{
-				ID:       node.ID,
-				Hostname: node.Description.Hostname,
-				Status:   string(node.Status.State),
+				ID:                   node.ID,
+				Hostname:             node.Description.Hostname,
+				Name:                 node.Spec.Name,
+				Role:                 string(node.Spec.Role),
+				PlatformArchitecture: node.Description.Platform.Architecture,
+				MemoryBytes:          node.Description.Resources.MemoryBytes,
+				Status:               string(node.Status.State),
 			})
 		}
 
@@ -191,17 +196,39 @@ func inspectSwarmServices() {
 		var taskViewModels []TaskViewModel
 		for _, task := range tasks {
 			taskViewModels = append(taskViewModels, TaskViewModel{
-				ID:        task.ID,
-				NodeID:    task.NodeID,
-				ServiceID: task.ServiceID,
+				ID:           task.ID,
+				NodeID:       task.NodeID,
+				ServiceID:    task.ServiceID,
+				DesiredState: string(task.DesiredState),
+				State:        string(task.Status.State),
+				CreatedAt:    task.CreatedAt,
+			})
+		}
+
+		// Map services to ServiceViewModel
+		var serviceViewModels []ServiceViewModel
+		for _, service := range services {
+			mode := "unknown"
+			if service.Spec.Mode.Replicated != nil {
+				mode = "replicated"
+			} else if service.Spec.Mode.Global != nil {
+				mode = "global"
+			}
+
+			serviceViewModels = append(serviceViewModels, ServiceViewModel{
+				ID:    service.ID,
+				Name:  service.Spec.Name,
+				Image: service.Spec.TaskTemplate.ContainerSpec.Image,
+				Mode:  mode,
 			})
 		}
 
 		// Combine services and nodes into a single struct
 		data := SwarmData{
-			Services: serviceViewModels,
-			Nodes:    nodeViewModels,
-			Tasks:    taskViewModels,
+			ClusterName: clusterName,
+			Services:    serviceViewModels,
+			Nodes:       nodeViewModels,
+			Tasks:       taskViewModels,
 		}
 
 		// Compare the new data with the last broadcasted data
