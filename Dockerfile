@@ -1,25 +1,19 @@
 # Use the official Golang image as the build stage
 FROM golang:1.23 AS builder
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the go.mod and go.sum files
+# Download and cache dependencies
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy the rest of the source code
+# Copy the rest of the source code and build
 COPY . .
-
-# Build the Go application
 RUN CGO_ENABLED=0 GOOS=linux go build -o swarm-monitor
 
 # Use a minimal base image for the final stage
 FROM gcr.io/distroless/static:nonroot
 
-# Set the working directory inside the container
 WORKDIR /
 
 USER root
@@ -28,8 +22,7 @@ USER root
 COPY --from=builder /app/swarm-monitor /swarm-monitor
 COPY static/ /static
 
-# Expose port 8080
+# Expose port the default port 8080m but can be overridden
 EXPOSE 8080
 
-# Command to run the application
 CMD ["/swarm-monitor"]
