@@ -8,6 +8,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - CLUSTER_NAME=Local Swarm
+      # - ROOT_CONTEXT=/testing
     ports:
       - "8080:8080"
     volumes:

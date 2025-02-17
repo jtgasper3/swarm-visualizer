@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,22 +63,35 @@ var (
 func main() {
 	clusterName = os.Getenv("CLUSTER_NAME")
 
+	rootContext := os.Getenv("ROOT_CONTEXT")
+	if rootContext == "" {
+		rootContext = "/" // default root context
+	}
+	if !strings.HasSuffix(rootContext, "/") {
+		rootContext += "/"
+	}
+	log.Println("Server root context is " + rootContext)
+
 	// Start inspecting Swarm services in a separate goroutine
 	go inspectSwarmServices()
 
 	// Serve static files from the "./static" directory
 	fs := http.FileServer(http.Dir("./static"))
-	http.Handle("/", fs)
+	http.Handle(rootContext, http.StripPrefix(rootContext, fs))
 
 	// Handle WebSocket connections
-	http.HandleFunc("/ws", handleConnections)
+	http.HandleFunc(rootContext+"ws", handleConnections)
 
 	// Start broadcasting messages to clients
 	go handleMessages()
 
 	// Start the server
-	log.Println("Server started on :8080")
-	err := http.ListenAndServe(":8080", nil)
+	listenerPort := os.Getenv("LISTENER_PORT")
+	if listenerPort == "" {
+		listenerPort = "8080" // default port
+	}
+	log.Println("Server started on :" + listenerPort)
+	err := http.ListenAndServe(":"+listenerPort, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
@@ -146,6 +160,8 @@ func handleMessages() {
 }
 
 func inspectSwarmServices() {
+	sleepDuration := 2 * time.Second
+
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		log.Fatal("Docker client error:", err)
@@ -156,7 +172,7 @@ func inspectSwarmServices() {
 		services, err := cli.ServiceList(context.Background(), types.ServiceListOptions{})
 		if err != nil {
 			log.Println("Error fetching services:", err)
-			time.Sleep(10 * time.Second)
+			time.Sleep(sleepDuration)
 			continue
 		}
 
@@ -164,7 +180,7 @@ func inspectSwarmServices() {
 		nodes, err := cli.NodeList(context.Background(), types.NodeListOptions{})
 		if err != nil {
 			log.Println("Error fetching nodes:", err)
-			time.Sleep(10 * time.Second)
+			time.Sleep(sleepDuration)
 			continue
 		}
 
@@ -174,7 +190,7 @@ func inspectSwarmServices() {
 		tasks, err := cli.TaskList(context.Background(), types.TaskListOptions{Filters: filterArgs})
 		if err != nil {
 			log.Println("Error fetching task:", err)
-			time.Sleep(10 * time.Second)
+			time.Sleep(sleepDuration)
 			continue
 		}
 
@@ -240,7 +256,7 @@ func inspectSwarmServices() {
 			jsonData, err := json.Marshal(data)
 			if err != nil {
 				log.Println("Error marshalling combined data:", err)
-				time.Sleep(10 * time.Second)
+				time.Sleep(sleepDuration)
 				continue
 			}
 
@@ -248,7 +264,6 @@ func inspectSwarmServices() {
 			broadcast <- jsonData
 		}
 
-		// Wait for 10 seconds before the next fetch
-		time.Sleep(10 * time.Second)
+		time.Sleep(sleepDuration)
 	}
 }

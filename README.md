@@ -1,5 +1,12 @@
 
 
+## Configuration
+
+Environment Variables:
+- `CLUSTER_NAME`: title to display on the main page
+- `LISTENER_PORT`: port to listen on (default: `8080`)
+- `ROOT_CONTEXT`: the root context of the app (default: `/`)
+
 ## Local testing
 
 ```sh
