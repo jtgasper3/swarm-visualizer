@@ -83,7 +83,7 @@
             this.nodes = data.nodes.map((node) => {
               if (data.tasks) {
                 node.tasks = data.tasks
-                  .filter(task => task.nodeID === node.ID)
+                  .filter(task => task.nodeId === node.id)
                   .map((task) => {
                     task.service = this.services.find((service) => task.serviceId === service.id);
                     return task;
