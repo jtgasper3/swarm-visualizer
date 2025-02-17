@@ -12,7 +12,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o swarm-monitor
 
 # Use a minimal base image for the final stage
-FROM gcr.io/distroless/static:nonroot
+FROM scratch
 
 WORKDIR /
 
