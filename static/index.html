@@ -23,7 +23,7 @@
         <v-container class="pa-md-12 mx-auto" fluid>
           <h2 v-if="clusterName" class="text-h4 font-weight-bold mb-4 text-center">{{ clusterName }}</h2>
           <v-row>
-            <v-col v-for="(node, i) in nodes" :key="i" class="d-flex" cols="12" lg="3" sm="6">
+            <v-col v-for="node in nodes" :key="node.id" class="d-flex" cols="12" lg="3" sm="6">
               <v-card border color="grey-lighten-4" flat rounded="lg">
                 <v-card-title>
                   <v-badge :color="nodeStatus(node.status)" dot inline floating :title="node.status"></v-badge> {{
@@ -37,17 +37,18 @@
                   <v-spacer />
                   Memory: {{ formatBytes(node.memoryBytes) }}
                 </v-card-text>
+
                 <v-card-text class="mt-n4">
-                  <v-card v-for="(task, j) in node.tasks" :key="j" border class="d-flex flex-column mb-2" flat
+                  <v-card v-for="task in node.tasks" :key="task.id" border class="d-flex flex-column mb-2" flat
                     rounded="lg">
-                    <v-card-title>
+                    <v-card-title v-if="task.service">
                       <v-badge :color="taskStatus(task.state)" dot inline floating :title="task.state"></v-badge>
                       {{ task.service.name }}
                     </v-card-title>
                     <v-card-subtitle>
                       id: {{ task.id }}
                     </v-card-subtitle>
-                    <v-card-text class="mt-n3">
+                    <v-card-text v-if="task.service" class="mt-n3">
                       <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ task.service.mode }}</v-chip>
                       <v-spacer />
                       <span class="text-medium flex-1-1-100">
@@ -112,6 +113,7 @@
 
           this.ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
+            console.log(data)
             this.clusterName = data.clusterName;
             this.services = data.services;
             this.nodes = data.nodes.map((node) => {
@@ -122,12 +124,14 @@
                     task.service = this.services.find((service) => task.serviceId === service.id);
                     return task;
                   });
-              }
+              } 
+              // else {
+              //   node.tasks = [{name: "Unknown", service: {name: "Unknown"}}]
+              // }
 
               return node;
             });
-            console.log(this.services)
-            console.log(this.nodes)
+            
           };
 
           this.ws.onclose = () => {
