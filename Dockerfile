@@ -16,8 +16,6 @@ FROM scratch
 
 WORKDIR /
 
-USER root
-
 # Copy the binary from the build stage
 COPY --from=builder /app/swarm-monitor /swarm-monitor
 COPY static/ /static

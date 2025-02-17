@@ -1,8 +1,8 @@
 version: '3.8'
 
 services:
-  swarm-monitor:
-    image: swarm-monitor:latest
+  swarm-visualizer:
+    image: swarm-visualizer:latest
     build:
       context: .
       dockerfile: Dockerfile
