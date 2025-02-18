@@ -9,6 +9,7 @@ type NodeViewModel struct {
 	Role                 string `json:"role"`
 	PlatformArchitecture string `json:"platformArchitecture"`
 	MemoryBytes          int64  `json:"memoryBytes"`
+	Availability         string `json:"availability"`
 	Status               string `json:"status"`
 }
 

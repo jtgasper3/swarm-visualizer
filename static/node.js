@@ -8,6 +8,7 @@ export default {
       <v-card-title>
         <v-badge :color="nodeStatus(node.status)" dot inline floating :title="node.status"></v-badge> {{
         node.hostname }}
+        <span v-if="node.availability !== 'active'">({{ node.availability }})</span>
       </v-card-title>
       <v-card-subtitle>id: {{ node.id }}</v-card-subtitle>
       <v-card-text class="mt-n2">

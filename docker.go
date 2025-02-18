@@ -55,6 +55,7 @@ func inspectSwarmServices() {
 				Role:                 string(node.Spec.Role),
 				PlatformArchitecture: node.Description.Platform.Architecture,
 				MemoryBytes:          node.Description.Resources.MemoryBytes,
+				Availability:         string(node.Spec.Availability),
 				Status:               string(node.Status.State),
 			})
 		}
