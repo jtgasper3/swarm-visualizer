@@ -24,7 +24,7 @@
         <v-container class="pa-md-12 mx-auto" fluid>
           <h2 v-if="clusterName" class="text-h4 font-weight-bold mb-4 text-center">{{ clusterName }}</h2>
           <v-row>
-            <v-col v-for="node in nodes" :key="node.id" class="d-flex" cols="12" lg="3" sm="6">
+            <v-col v-for="node in sortedNodes" :key="node.id" class="d-flex" cols="12" lg="3" sm="6">
               <Node :node="node" />
             </v-col>
           </v-row>
@@ -60,7 +60,9 @@
         Node,
       },
       computed: {
-
+        sortedNodes() {
+          return this.nodes.sort((a, b) => a.name < b.name? -1 : 1);
+        },
       },
       mounted() {
         this.connectWebSocket();
