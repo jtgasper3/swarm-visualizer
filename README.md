@@ -22,6 +22,10 @@ docker swarm init
 ```
 docker service create --name nginx --replicas=3 nginx:latest
 docker service create --name redis redis:latest
+docker service create --name redis2 redis:latest
+docker service create --name redis3 redis:latest
+docker service create --name redis4 redis:latest
+docker service create --name redis5 redis:latest
 ```
 
 ```sh

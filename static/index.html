@@ -35,7 +35,6 @@
 
   <script type="module">
     import Node from './node.js';
-    // import Task from './task.js';
 
     const { createApp } = Vue;
     const { createVuetify, useDate } = Vuetify;
@@ -79,9 +78,13 @@
 
           this.ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            console.log(data)
+            
             this.clusterName = data.clusterName;
-            this.services = data.services;
+            this.services = data.services.map((service) => {
+              service.index = data.services.findIndex((serv) => serv.id === service.id);
+              return service;
+            })
+
             this.nodes = data.nodes.map((node) => {
               if (data.tasks) {
                 node.tasks = data.tasks

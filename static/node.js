@@ -4,13 +4,16 @@ const { useDate } = Vuetify;
 
 export default {
   template: `
-    <v-card border color="grey-lighten-4" flat rounded="lg">
-      <v-card-title>
-        <v-badge :color="nodeStatus(node.status)" dot inline floating :title="node.status"></v-badge> {{
-        node.hostname }}
-        <span v-if="node.availability !== 'active'">({{ node.availability }})</span>
-      </v-card-title>
-      <v-card-subtitle>id: {{ node.id }}</v-card-subtitle>
+    <v-card  color="primary-lighten-4" rounded="lg" variant="tonal">
+      <v-card-item>
+        <v-card-title>
+          <v-badge :color="nodeStatus(node.status)" dot inline floating :title="node.status"></v-badge> {{
+          node.hostname }}
+          <span v-if="node.availability !== 'active'">({{ node.availability }})</span>
+        </v-card-title>
+        <v-card-subtitle>id: {{ node.id }}</v-card-subtitle>
+      </v-card-item>
+      
       <v-card-text class="mt-n2">
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.role }}</v-chip>
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.platformArchitecture
