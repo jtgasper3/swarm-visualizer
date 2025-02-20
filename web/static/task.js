@@ -37,13 +37,8 @@ export default {
       </v-card-actions> -->
     </v-card>
     `,
-  data() {
-    return {
-      
-    }
-  },
   props: {
-      task: Object,
+    task: Object,
   },
   methods: {
     taskStatus(status) {

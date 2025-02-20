@@ -15,9 +15,7 @@
         "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.esm.js"
       }
     }
-    </script>
-  <!-- <script src="node.js" type="module"></script>
-  <script src="task.js" type="module"></script> -->
+  </script>
 </head>
 
 <body>
@@ -34,13 +32,15 @@
         </v-container>
       </v-main>
     </v-app>
+    <WebSocket @update="updateData" />
   </div>
-
+  
   <script type="module">
-    import { createApp } from "vue";
-    import { createVuetify } from "vuetify";
+    import { createApp } from 'vue';
+    import { createVuetify } from 'vuetify';
     
     import Node from './node.js';
+    import Websocket from './websocket.js';
 
     const vuetify = createVuetify({
       theme: {
@@ -51,18 +51,14 @@
     createApp({
       data() {
         return {
-          clusterName: "Loading...",
+          clusterName: 'Loading...',
           services: [],
           nodes: [],
-
-          // ws connection
-          ws: null,
-          reconnectAttempts: 0,
-          maxReconnectInterval: 30000 // 30 seconds
         };
       },
       components: {
         Node,
+        Websocket,
       },
       computed: {
         sortedNodes() {
@@ -70,64 +66,28 @@
         },
       },
       mounted() {
-        this.connectWebSocket();
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.onSystemThemeChange);
       },
       methods: {
-        connectWebSocket() {
-          const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-          this.ws = new WebSocket(proto + '://' + window.location.host + window.location.pathname + 'ws');
+        updateData(data) {
+          this.clusterName = data.clusterName;
+          this.services = data.services.map((service) => {
+            service.index = data.services.findIndex((serv) => serv.id === service.id);
+            return service;
+          })
 
-          this.ws.onopen = () => {
-            console.log('WebSocket connection established');
-            this.reconnectAttempts = 0;
-          };
+          this.nodes = data.nodes.map((node) => {
+            if (data.tasks) {
+              node.tasks = data.tasks
+                .filter(task => task.nodeId === node.id)
+                .map((task) => {
+                  task.service = this.services.find((service) => task.serviceId === service.id);
+                  return task;
+                });
+            } 
 
-          this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            this.clusterName = data.clusterName;
-            this.services = data.services.map((service) => {
-              service.index = data.services.findIndex((serv) => serv.id === service.id);
-              return service;
-            })
-
-            this.nodes = data.nodes.map((node) => {
-              if (data.tasks) {
-                node.tasks = data.tasks
-                  .filter(task => task.nodeId === node.id)
-                  .map((task) => {
-                    task.service = this.services.find((service) => task.serviceId === service.id);
-                    return task;
-                  });
-              } 
-              // else {
-              //   node.tasks = [{name: "Unknown", service: {name: "Unknown"}}]
-              // }
-
-              return node;
-            });
-            
-          };
-
-          this.ws.onclose = () => {
-            console.log('WebSocket connection closed');
-            this.reconnectWebSocket();
-          };
-
-          this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-          };
-        },
-        reconnectWebSocket() {
-          let reconnectInterval = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.maxReconnectInterval);
-
-          setTimeout(() => {
-            console.log(`Reconnecting in ${reconnectInterval / 1000} seconds...`);
-            this.connectWebSocket();
-          }, reconnectInterval);
-
-          this.reconnectAttempts++;
+            return node;
+          });
         },
         onSystemThemeChange(event) {
           this.$vuetify.theme.global.name = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -135,9 +95,6 @@
       },
       beforeDestroy() {
         window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', this.onSystemThemeChange);
-        if (this.ws) {
-          this.ws.close();
-        }
       }
     }).use(vuetify).mount('#app');
   </script>
