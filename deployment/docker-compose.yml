@@ -4,8 +4,10 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    env_file: "../dev.env"
     environment:
       - CLUSTER_NAME=Local Swarm
+      - OIDC_SCOPES=openid,profile,email
       # - CONTEXT_ROOT=/testing
     ports:
       - "8080:8080"
