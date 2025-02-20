@@ -1,8 +1,5 @@
-const { useDate } = Vuetify;
-
 // https://htmlcolorcodes.com/color-chart/
-const darkColors = [ '#039be5', '#3949ab', '#8e24aa', '#e53935', '#fb8c00', '#fdd835', '#7cb342', '#00897b', '#00acc1', '#6d4c41',];
-const lightColors = ['yellow', 'pink', 'white', 'orange']
+const taskColors = [ '#039be5', '#3949ab', '#8e24aa', '#e53935', '#fb8c00', '#fdd835', '#7cb342', '#00897b', '#00acc1', '#6d4c41', ];
 
 export default {
   template: `
@@ -30,7 +27,7 @@ export default {
         </span>
         <v-spacer />
         <span class="text-small-emphasis">
-          Created: {{ date.format(task.createdAt, 'keyboardDateTime12h') }}
+          Created: {{ this.$vuetify.date.format(task.createdAt, 'keyboardDateTime12h') }}
         </span>
       </v-card-text>
       <!-- <v-card-actions>
@@ -42,7 +39,7 @@ export default {
     `,
   data() {
     return {
-      date: useDate(),
+      
     }
   },
   props: {
@@ -55,12 +52,8 @@ export default {
         default: return 'error'; break
       }
     },
-    calcColor(index, mode = 'light') {
-      if (mode === 'dark') {
-        return lightColors[index % lightColors.length]
-      } else {
-        return darkColors[index % darkColors.length]
-      }
-    },
+    calcColor(index) {
+      return taskColors[index % taskColors.length]
+    }
   }
 }

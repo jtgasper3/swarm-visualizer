@@ -4,17 +4,20 @@
 <head>
   <meta charset="utf-8">
   <title>Docker Swarm Monitor</title>
-  <!-- Add Vue 3 CDN -->
-  <script src="https://unpkg.com/vue@3"></script>
-  <!-- Add Vuetify 3 CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.min.js"></script>
-  <!-- Add Vuetify CSS -->
   <link href="https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.min.css" rel="stylesheet">
-  <!-- Add Material Design Icons -->
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://fonts.bunny.net/css?family=roboto:400,500,700" rel="stylesheet" />
 
-  <script src="node.js" type="module"></script>
-  <script src="task.js" type="module"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "vue": "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.js",
+        "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.esm.js"
+      }
+    }
+    </script>
+  <!-- <script src="node.js" type="module"></script>
+  <script src="task.js" type="module"></script> -->
 </head>
 
 <body>
@@ -34,18 +37,21 @@
   </div>
 
   <script type="module">
+    import { createApp } from "vue";
+    import { createVuetify } from "vuetify";
+    
     import Node from './node.js';
 
-    const { createApp } = Vue;
-    const { createVuetify, useDate } = Vuetify;
-
-    const vuetify = createVuetify();
+    const vuetify = createVuetify({
+      theme: {
+        defaultTheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      }
+    });
 
     createApp({
       data() {
         return {
           clusterName: "Loading...",
-          date: useDate(),
           services: [],
           nodes: [],
 
@@ -65,6 +71,7 @@
       },
       mounted() {
         this.connectWebSocket();
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.onSystemThemeChange);
       },
       methods: {
         connectWebSocket() {
@@ -122,8 +129,12 @@
 
           this.reconnectAttempts++;
         },
+        onSystemThemeChange(event) {
+          this.$vuetify.theme.global.name = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
       },
       beforeDestroy() {
+        window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', this.onSystemThemeChange);
         if (this.ws) {
           this.ws.close();
         }

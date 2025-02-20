@@ -1,7 +1,5 @@
 import Task from './task.js';
 
-const { useDate } = Vuetify;
-
 export default {
   template: `
     <v-card  color="primary-lighten-4" rounded="lg" variant="tonal">
@@ -32,7 +30,6 @@ export default {
     },
     data() {
       return {
-        date: useDate(),
       }
     },
     props: {
