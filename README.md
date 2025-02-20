@@ -1,23 +1,65 @@
 
+Swarm Visualizer
+================
+
+The Swarm Visualizer extends on the [`dockersamples/docker-swarm-visualizer`](https://github.com/dockersamples/docker-swarm-visualizer) demo'd at the 2015 DockerCon EU keynote.
+
+It's goals are:
+ - minimize internal data being exposed to the browser
+ - allow for more control of the data being viewed
+ - implement authentication via OpenID Connect
+
+## Usage
+
+### Docker CLI
+
+```sh
+docker service create visualizer \
+    -e CLUSTER_NAME="Dev Cluster" \
+    -p 8080:8080 \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    --constraint node.role==manager
+    jtgasper3/swarm-visualizer
+```
+
+### Docker Compose
+
+```yaml
+service:
+  viz:
+    image: jtgasper3/swarm-visualizer:latest
+    deploy:
+      placement:
+        constraints:
+          - node.role==manager
+    environment:
+      CLUSTER_NAME: Dev Cluster
+    ports:
+      - 8080:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+```
 
 ## Configuration
 
 Environment Variables:
 - `CLUSTER_NAME`: title to display on the main page
+- `CONTEXT_ROOT`: the context root of the web app; useful when working with reverse-proxies (default: `/`)
 - `LISTENER_PORT`: port to listen on (default: `8080`)
-- `ROOT_CONTEXT`: the root context of the app (default: `/`)
+- `DOCKER_API_VERSION`: adjust the Docker api version if the server needs it. (default: `1.47`)
 
-## Local testing
 
-```sh
-go run main.go
-```
+## Development/Testing
 
-## 
+### Turn on Swarm Mode
+
+If not already enabled:
 
 ```sh
 docker swarm init
 ```
+
+### Spin up some services
 
 ```
 docker service create --name nginx --replicas=3 nginx:latest
@@ -28,6 +70,23 @@ docker service create --name redis4 redis:latest
 docker service create --name redis5 redis:latest
 ```
 
+### Build and test
 ```sh
-docker-compose up --build
+docker compose -f deployment/docker-compose.yml up --build
+```
+
+> The compose file mounts the static assets so they can be modified on the fly.
+
+### Cleaning up
+
+Stop dummy services:
+
+```sh
+ docker service rm nginx redis redis2 redis3 redis4 redis5
+ ```
+
+Remove Swarm mode:
+
+```sh
+docker swarm leave --force
 ```

@@ -1,19 +1,17 @@
-version: '3.8'
-
 services:
   swarm-visualizer:
     image: swarm-visualizer:latest
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     environment:
       - CLUSTER_NAME=Local Swarm
-      # - ROOT_CONTEXT=/testing
+      # - CONTEXT_ROOT=/testing
     ports:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $PWD/static:/static
+      - $PWD/web/static:/static
     deploy:
       placement:
         constraints:

@@ -1,4 +1,4 @@
-package main
+package websocket
 
 import (
 	"encoding/json"
@@ -6,15 +6,15 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/jtgasper3/swarm-visualizer/internal/shared"
 )
 
 var (
-	upgrader  = websocket.Upgrader{}
-	clients   = make(map[*websocket.Conn]bool)
-	broadcast = make(chan []byte)
+	upgrader = websocket.Upgrader{}
+	clients  = make(map[*websocket.Conn]bool)
 )
 
-func handleConnections(w http.ResponseWriter, r *http.Request) {
+func HandleConnections(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade error:", err)
@@ -23,10 +23,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	mu.Lock()
+	shared.Mu.Lock()
 	clients[ws] = true
 
-	data, err := json.Marshal(lastBroadcastedData)
+	data, err := json.Marshal(shared.LastBroadcastedData)
 	if err != nil {
 		log.Println("Error marshalling combined data:", err)
 	}
@@ -36,25 +36,25 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		ws.Close()
 		delete(clients, ws)
 	}
-	mu.Unlock()
+	shared.Mu.Unlock()
 	log.Printf("New client connected: %s", r.RemoteAddr)
 
 	for {
 		_, _, err := ws.ReadMessage()
 		if err != nil {
 			log.Printf("Client disconnected: %v", err)
-			mu.Lock()
+			shared.Mu.Lock()
 			delete(clients, ws)
-			mu.Unlock()
+			shared.Mu.Unlock()
 			break
 		}
 	}
 }
 
-func handleMessages() {
+func HandleMessages() {
 	for {
-		msg := <-broadcast
-		mu.Lock()
+		msg := <-shared.Broadcast
+		shared.Mu.Lock()
 		for client := range clients {
 			err := client.WriteMessage(websocket.TextMessage, msg)
 			if err != nil {
@@ -63,6 +63,6 @@ func handleMessages() {
 				delete(clients, client)
 			}
 		}
-		mu.Unlock()
+		shared.Mu.Unlock()
 	}
 }

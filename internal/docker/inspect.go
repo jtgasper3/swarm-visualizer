@@ -1,4 +1,4 @@
-package main
+package docker
 
 import (
 	"context"
@@ -7,12 +7,15 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/jtgasper3/swarm-visualizer/internal/models"
+	"github.com/jtgasper3/swarm-visualizer/internal/shared"
+
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 )
 
-func inspectSwarmServices() {
+func InspectSwarmServices() {
 	sleepDuration := 2 * time.Second
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -20,8 +23,7 @@ func inspectSwarmServices() {
 	}
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		ctx, ctxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 
 		services, err := cli.ServiceList(ctx, types.ServiceListOptions{})
 		if err != nil {
@@ -46,9 +48,11 @@ func inspectSwarmServices() {
 			continue
 		}
 
-		var nodeViewModels []NodeViewModel
+		ctxCancel()
+
+		var nodeViewModels []models.NodeViewModel
 		for _, node := range nodes {
-			nodeViewModels = append(nodeViewModels, NodeViewModel{
+			nodeViewModels = append(nodeViewModels, models.NodeViewModel{
 				ID:                   node.ID,
 				Hostname:             node.Description.Hostname,
 				Name:                 node.Spec.Name,
@@ -60,9 +64,9 @@ func inspectSwarmServices() {
 			})
 		}
 
-		var taskViewModels []TaskViewModel
+		var taskViewModels []models.TaskViewModel
 		for _, task := range tasks {
-			taskViewModels = append(taskViewModels, TaskViewModel{
+			taskViewModels = append(taskViewModels, models.TaskViewModel{
 				ID:           task.ID,
 				NodeID:       task.NodeID,
 				ServiceID:    task.ServiceID,
@@ -72,7 +76,7 @@ func inspectSwarmServices() {
 			})
 		}
 
-		var serviceViewModels []ServiceViewModel
+		var serviceViewModels []models.ServiceViewModel
 		for _, service := range services {
 			mode := "unknown"
 			if service.Spec.Mode.Replicated != nil {
@@ -81,7 +85,7 @@ func inspectSwarmServices() {
 				mode = "global"
 			}
 
-			serviceViewModels = append(serviceViewModels, ServiceViewModel{
+			serviceViewModels = append(serviceViewModels, models.ServiceViewModel{
 				ID:    service.ID,
 				Name:  service.Spec.Name,
 				Image: service.Spec.TaskTemplate.ContainerSpec.Image,
@@ -89,15 +93,15 @@ func inspectSwarmServices() {
 			})
 		}
 
-		data := SwarmData{
-			ClusterName: clusterName,
+		data := models.SwarmData{
+			ClusterName: shared.ClusterName,
 			Services:    serviceViewModels,
 			Nodes:       nodeViewModels,
 			Tasks:       taskViewModels,
 		}
 
-		if lastBroadcastedData == nil || !reflect.DeepEqual(data, *lastBroadcastedData) {
-			lastBroadcastedData = &data
+		if shared.LastBroadcastedData == nil || !reflect.DeepEqual(data, *shared.LastBroadcastedData) {
+			shared.LastBroadcastedData = &data
 			jsonData, err := json.Marshal(data)
 			if err != nil {
 				log.Println("Error marshalling combined data:", err)
@@ -105,7 +109,7 @@ func inspectSwarmServices() {
 				continue
 			}
 
-			broadcast <- jsonData
+			shared.Broadcast <- jsonData
 		}
 
 		time.Sleep(sleepDuration)
