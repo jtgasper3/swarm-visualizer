@@ -11,9 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/jtgasper3/swarm-visualizer/internal/docker"
-	"github.com/jtgasper3/swarm-visualizer/internal/models"
 	"github.com/jtgasper3/swarm-visualizer/internal/server"
 	"github.com/jtgasper3/swarm-visualizer/internal/shared"
 )
@@ -22,8 +20,6 @@ const (
 	defaultContextRoot  = "/"
 	defaultListenerPort = "8080"
 )
-
-var rsaPublicKeyMap = make(map[string]*rsa.PublicKey)
 
 func main() {
 	shared.ClusterName = os.Getenv("CLUSTER_NAME")
@@ -37,21 +33,27 @@ func main() {
 	http.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
 	http.HandleFunc(contextRoot+"ws", server.HandleConnections)
 
-	shared.OAuthConfig = server.SetupOAuthConfig()
-	// Fetch and parse the JWKS
-	err := fetchJWKS()
-	if err != nil {
-		log.Fatalf("Failed to fetch JWKS: %v", err)
+	if os.Getenv("ENABLE_AUTH") == "true" {
+		shared.AuthEnabled = true
 	}
 
-	http.HandleFunc("/login", server.HandleLogin)
-	http.HandleFunc("/callback", server.HandleCallback)
-	http.HandleFunc("/protected", handleProtected)
+	if shared.AuthEnabled {
+		shared.OAuthConfig = server.SetupOAuthConfig()
+
+		// Fetch and parse the well-known oidc config
+		err := fetchWellKnownOIDCConfig()
+		if err != nil {
+			log.Fatalf("Failed to fetch JWKS: %v", err)
+		}
+
+		http.HandleFunc("/login", server.HandleLogin)
+		http.HandleFunc("/callback", server.HandleCallback)
+	}
 
 	go server.HandleMessages()
 
 	log.Printf("Server started on :%s", listenerPort)
-	err = http.ListenAndServe(":"+listenerPort, nil)
+	err := http.ListenAndServe(":"+listenerPort, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
@@ -74,60 +76,8 @@ func getServerConfig() (string, string) {
 	return contextRoot, listenerPort
 }
 
-func handleProtected(w http.ResponseWriter, r *http.Request) {
-	var rawIDToken string
-	cookie, err := r.Cookie("id_token")
-	if err != nil {
-		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			rawIDToken = strings.TrimPrefix(authHeader, "Bearer ")
-		} else {
-			http.Error(w, "Unauthorized: No valid ID token", http.StatusUnauthorized)
-			return
-		}
-	} else {
-		rawIDToken = cookie.Value
-	}
-
-	token, err := jwt.ParseWithClaims(rawIDToken, &models.IDTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-
-		kid, ok := token.Header["kid"].(string)
-		if !ok {
-			return nil, fmt.Errorf("missing kid in token header")
-		}
-
-		rsaPublicKey, ok := rsaPublicKeyMap[kid]
-		if !ok {
-			return nil, fmt.Errorf("unknown kid: %s", kid)
-		}
-
-		return rsaPublicKey, nil
-	})
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to parse ID token: %v", err), http.StatusUnauthorized)
-		return
-	}
-
-	if claims, ok := token.Claims.(*models.IDTokenClaims); ok && token.Valid {
-		if claims.Audience != shared.OAuthConfig.ClientID {
-			http.Error(w, fmt.Sprintf("ID token for a different token: %s", claims.Audience), http.StatusUnauthorized)
-		}
-
-		response := map[string]interface{}{
-			"message": "Protected endpoint accessed!",
-			"claims":  claims,
-		}
-		json.NewEncoder(w).Encode(response)
-	} else {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-	}
-}
-
-func fetchJWKS() error {
-	wellKnownURL := "https://login.microsoftonline.com/446b4c6b-376e-4a2e-bcd8-b6284b57b6ca/v2.0/.well-known/openid-configuration"
+func fetchWellKnownOIDCConfig() error {
+	wellKnownURL := os.Getenv("OIDC_WELL_KNOWN_URL")
 	resp, err := http.Get(wellKnownURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch well-known configuration: %v", err)
@@ -135,10 +85,21 @@ func fetchJWKS() error {
 	defer resp.Body.Close()
 
 	var config struct {
-		JWKSURI string `json:"jwks_uri"`
+		TokenUrl string `json:"token_endpoint"`
+		AuthUrl  string `json:"authorization_endpoint"`
+		JWKSURI  string `json:"jwks_uri"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
 		return fmt.Errorf("failed to decode well-known configuration: %v", err)
+	}
+
+	if shared.OAuthConfig.Endpoint.AuthURL == "" {
+		log.Printf("Using Authorization Endpoint from well-known config %s", config.AuthUrl)
+		shared.OAuthConfig.Endpoint.AuthURL = config.AuthUrl
+	}
+	if shared.OAuthConfig.Endpoint.TokenURL == "" {
+		log.Printf("Using Token Endpoint from well-known config %s", config.TokenUrl)
+		shared.OAuthConfig.Endpoint.TokenURL = config.TokenUrl
 	}
 
 	jwksResp, err := http.Get(config.JWKSURI)
@@ -172,7 +133,7 @@ func fetchJWKS() error {
 			return fmt.Errorf("failed to parse certificate: %v", err)
 		}
 
-		rsaPublicKeyMap[key.Kid] = cert.PublicKey.(*rsa.PublicKey)
+		shared.RsaPublicKeyMap[key.Kid] = cert.PublicKey.(*rsa.PublicKey)
 	}
 	return nil
 }

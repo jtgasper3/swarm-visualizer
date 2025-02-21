@@ -57,5 +57,5 @@ func HandleCallback(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 	})
-	http.Redirect(w, r, "/protected", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }

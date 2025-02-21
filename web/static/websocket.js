@@ -21,8 +21,13 @@ export default {
       };
 
       this.ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        this.$emit('update', data);
+        const data = event.data;
+        if (typeof(data) === 'string' && data.startsWith('401-Unauthorized')) {
+          this.$emit('not-authorized');
+        }
+
+        const json = JSON.parse(event.data);
+        this.$emit('update', json);
       };
 
       this.ws.onclose = () => {

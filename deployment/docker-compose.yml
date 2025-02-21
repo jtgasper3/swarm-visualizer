@@ -7,6 +7,8 @@ services:
     env_file: "../dev.env"
     environment:
       - CLUSTER_NAME=Local Swarm
+      - ENABLE_AUTH=true
+      - OIDC_REDIRECT_URL=http://localhost:8080/callback
       - OIDC_SCOPES=openid,profile,email
       # - CONTEXT_ROOT=/testing
     ports:
