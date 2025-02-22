@@ -33,7 +33,7 @@ func main() {
 	http.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
 	http.HandleFunc(contextRoot+"ws", server.HandleConnections)
 
-	if os.Getenv("ENABLE_AUTH") == "true" {
+	if os.Getenv("ENABLE_AUTHN") == "true" {
 		shared.AuthEnabled = true
 	}
 

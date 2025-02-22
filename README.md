@@ -50,7 +50,7 @@ General Environment Variables:
 
 OIDC Environment Variables:
 
-- `ENABLE_AUTH`: `true` enables OIDC support (default: `false`)
+- `ENABLE_AUTHN`: `true` enable OIDC authentication support (default: `false`)
 - `OIDC_CLIENT_ID`: standard OAuth client id
 - `OIDC_CLIENT_SECRET`: standard OAuth client secret
 - `OIDC_REDIRECT_URL`: this app's callback url; should end in `/callback` and will be registered in the identity provider. For example, `https://myswarm.example.internal/visualizer/callback`
