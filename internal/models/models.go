@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
+)
 
 type NodeViewModel struct {
 	ID                   string `json:"id"`
@@ -35,4 +39,11 @@ type SwarmData struct {
 	Nodes       []NodeViewModel    `json:"nodes"`
 	Services    []ServiceViewModel `json:"services"`
 	Tasks       []TaskViewModel    `json:"tasks"`
+}
+
+type IDTokenClaims struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Sub   string `json:"sub"`
+	jwt.StandardClaims
 }

@@ -20,6 +20,9 @@ WORKDIR /
 COPY --from=builder /app/swarm-monitor /swarm-monitor
 COPY /web/static/ /static
 
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+ENV SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
+
 # Expose port the default port 8080m but can be overridden
 EXPOSE 8080
 

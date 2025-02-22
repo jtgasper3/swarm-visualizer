@@ -1,4 +1,4 @@
-package websocket
+package server
 
 import (
 	"encoding/json"
@@ -22,6 +22,14 @@ func HandleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer ws.Close()
+
+	if shared.AuthEnabled {
+		_, err = shared.ValidateToken(r)
+		if err != nil {
+			ws.WriteMessage(websocket.TextMessage, []byte("401-Unauthorized"))
+			return
+		}
+	}
 
 	shared.Mu.Lock()
 	clients[ws] = true

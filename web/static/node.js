@@ -28,10 +28,6 @@ export default {
     components: {
       Task
     },
-    data() {
-      return {
-      }
-    },
     props: {
       node: Object
     },
