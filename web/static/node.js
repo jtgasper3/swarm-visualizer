@@ -21,33 +21,70 @@ export default {
       </v-card-text>
 
       <v-card-text class="mt-n4">
-        <Task v-for="task in node.tasks" :key="task.id" :task="task" />
+        <Task v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :task="task" />
       </v-card-text>
     </v-card>
     `,
-    components: {
-      Task
-    },
-    props: {
-      node: Object
-    },
-    methods: {
-      formatBytes(bytes) {
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        let unitIndex = 0;
+  components: {
+    Task
+  },
+  props: {
+    node: Object,
+    filters: Object,
+    sort: String,
+  },
+  methods: {
+    formatBytes(bytes) {
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let unitIndex = 0;
 
-        while (bytes >= 1024 && unitIndex < units.length - 1) {
-          bytes /= 1024;
-          unitIndex++;
-        }
+      while (bytes >= 1024 && unitIndex < units.length - 1) {
+        bytes /= 1024;
+        unitIndex++;
+      }
 
-        return `${bytes.toFixed(2)} ${units[unitIndex]}`;
-      },
-      nodeStatus(status) {
-        switch (status) {
-          case 'ready': return 'success'; break
-          default: return 'error'; break
+      return `${bytes.toFixed(2)} ${units[unitIndex]}`;
+    },
+    sortedAndFilteredServices(tasks) {
+      return tasks
+        .filter(task => {
+          const filterText = this.filters.filterText ? this.filters.filterText.trim() : '';
+          if (filterText.length >= 0 && task.service.name.toLowerCase().includes(filterText.toLowerCase())) {
+            return true;
+          }
+          return false;
+        })
+        .filter(task => {
+          if (!this.filters.globalIncluded && task.service.mode === 'global') {
+            return false;
+          }
+          return true;
+        })
+        .filter(task => {
+          if (!this.filters.replicasIncluded && task.service.mode === 'replicated') {
+            return false;
+          }
+          return true;
+        })
+        .filter(task => {
+          if (this.filters.service === 'all') {
+            return true;
+          }
+          return this.filters.servicesSelection.includes(task.service.id);
+        })
+        .sort((a, b) => {
+          if (this.sort === 'Created') {
+            return a.createdAt.localeCompare(b.createdAt);
+          }
+          return a.service.name.localeCompare(b.service.name);
         }
-      },
-    }
+        );
+    },
+    nodeStatus(status) {
+      switch (status) {
+        case 'ready': return 'success'; break
+        default: return 'error'; break
+      }
+    },
+  }
 }

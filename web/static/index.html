@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <title>Docker Swarm Monitor</title>
-  <link href="https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
   <link href="https://fonts.bunny.net/css?family=roboto:400,500,700" rel="stylesheet" />
 
@@ -12,7 +12,9 @@
     {
       "imports": {
         "vue": "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.js",
-        "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3.7.11/dist/vuetify.esm.js"
+        "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.esm.js",
+        "@vueuse/shared": "https://cdn.jsdelivr.net/npm/@vueuse/shared@12/index.min.mjs",
+        "@vueuse/core": "https://cdn.jsdelivr.net/npm/@vueuse/core@12/index.min.mjs"
       }
     }
   </script>
@@ -21,12 +23,103 @@
 <body>
   <div id="app">
     <v-app>
+      <v-app-bar class="ps-4" flat>
+        <v-app-bar-nav-icon v-if="$vuetify.display.mdAndDown" @click="drawer = !drawer"></v-app-bar-nav-icon>
+
+        <v-app-bar-title>{{ clusterName }}</v-app-bar-title>
+
+        <!-- <template #append>
+            <div class="d-flex ga-2 align-center">
+              <v-btn color="medium-emphasis" icon="mdi-magnify" />
+
+              <v-btn color="medium-emphasis" icon="mdi-bell-outline" />
+
+              <v-btn color="medium-emphasis" icon="mdi-email-outline">
+                <v-badge color="error" content="1" dot>
+                  <v-icon />
+                </v-badge>
+              </v-btn>
+
+              <v-divider class="align-self-center" length="24" vertical />
+
+              <v-btn class="me-2" height="48" icon>
+                <v-avatar color="surface-light" image="https://cdn.vuetifyjs.com/images/john.png" size="32" />
+
+                <v-menu activator="parent">
+                  <v-list density="compact" nav>
+                    <v-list-item append-icon="mdi-cog-outline" link title="Settings" />
+
+                    <v-list-item append-icon="mdi-logout" link title="Logout" />
+                  </v-list>
+                </v-menu>
+              </v-btn>
+            </div>
+          </template> -->
+      </v-app-bar>
+
+      <v-navigation-drawer v-model="drawer" width="280">
+        <div class="px-2">
+          <v-list density="comfortable" nav slim>
+            <span class="font-weight-bold">FILTER</span>
+
+            <v-list-item>
+              <v-text-field v-model="filters.filterText" bg-color="surface-light" color="primary" density="compact"
+                hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify" rounded="lg" variant="outlined">
+                <v-divider class="me-2 align-self-center" length="20" vertical />
+
+                <template #clear="{ props: clearProps }">
+                  <v-icon v-bind="clearProps" size="18" />
+                </template>
+              </v-text-field>
+            </v-list-item>
+          </v-list>
+
+          <v-list v-model:selected="filters.servicesSelection" density="comfortable" nav slim select-strategy="leaf">
+            <v-list-subheader class="font-weight-bold">SERVICES
+              (<v-btn size="x-small" slim @click="selectServices('all')">all</v-btn>/<v-btn size="x-small" slim
+                @click="selectServices('none')">none</v-btn>)</v-list-subheader>
+            <v-list-item v-for="service in sortedServices" :key="service.id" :title="service.name" :value="service.id">
+              <template v-slot:prepend="{ isSelected }">
+                <v-list-item-action start>
+                  <v-checkbox-btn :model-value="isSelected" density="compact" hide-details></v-checkbox-btn>
+                </v-list-item-action>
+              </template>
+            </v-list-item>
+          </v-list>
+
+          <v-list density="comfortable" nav slim>
+            <v-list-subheader class="font-weight-bold">TYPE</v-list-subheader>
+            <v-switch v-model="filters.globalIncluded" label="Global" density="compact" hide-details></v-switch>
+            <v-switch v-model="filters.replicasIncluded" label="Replicated" density="compact" hide-details></v-switch>
+            </v-list-item>
+          </v-list>
+
+          <!-- <v-list v-if="filters.replicasIncluded" density="comfortable" nav slim>
+              <v-list-subheader class="font-weight-bold">REPLICAS</v-list-subheader>
+              <v-list-item>
+                <v-range-slider v-model="filters.replicas" :max="5" :min="0" :step="1" thumb-label density="compact"></v-slider>
+              </v-list-item>
+            </v-list> -->
+
+          <v-list density="comfortable" nav slim>
+            <span class="font-weight-bold">SORT</span>
+
+            <v-list-item>
+              <v-select density="compact" flat hide-details :items="['Service Name', 'Created']" label="Country"
+                :list-props="{ density: 'compact', rounded: 't-0' }" v-model="sort" single-line variant="solo" />
+            </v-list-item>
+          </v-list>
+        </div>
+
+        <template #append>
+          <v-divider />
+        </template>
+      </v-navigation-drawer>
       <v-main>
         <v-container class="pa-md-12 mx-auto" fluid>
-          <h2 v-if="clusterName" class="text-h4 font-weight-bold mb-4 text-center">{{ clusterName }}</h2>
           <v-row>
             <v-col v-for="node in sortedNodes" :key="node.id" class="d-flex" cols="12" lg="3" sm="6">
-              <Node :node="node" />
+              <Node :node="node" :filters="filters" :sort="sort" />
             </v-col>
           </v-row>
         </v-container>
@@ -34,11 +127,12 @@
     </v-app>
     <WebSocket @update="updateData" @not-authorized="getAuthorized()" />
   </div>
-  
+
   <script type="module">
-    import { createApp } from 'vue';
+    import { computed, createApp, ref } from 'vue';
     import { createVuetify } from 'vuetify';
-    
+    import { useStorage } from '@vueuse/core';
+
     import Node from './node.js';
     import Websocket from './websocket.js';
 
@@ -49,52 +143,81 @@
     });
 
     createApp({
-      data() {
-        return {
-          clusterName: 'Loading...',
-          services: [],
-          nodes: [],
-        };
-      },
-      components: {
-        Node,
-        Websocket,
-      },
-      computed: {
-        sortedNodes() {
-          return this.nodes.sort((a, b) => a.hostname < b.hostname? -1 : 1);
-        },
-      },
-      mounted() {
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.onSystemThemeChange);
-      },
-      methods: {
-        getAuthorized() {
-          window.location.href  = '/login';
-        },
-        updateData(data) {
-          this.clusterName = data.clusterName;
-          this.services = data.services.map((service) => {
+      setup() {
+        const clusterName = ref('Loading...');
+        const drawer = ref(true);
+        const filters = useStorage('filters', {
+          filterText: '',
+          servicesSelection: [],
+          globalIncluded: true,
+          replicasIncluded: true,
+          // replicas: [0, 10]
+        });
+
+        const sort = useStorage('sort', 'Service Name');
+        const services = ref([]);
+        const nodes = ref([]);
+
+        const sortedNodes = computed(() => nodes.value.sort((a, b) => a.hostname < b.hostname ? -1 : 1));
+        const sortedServices = computed(() => services.value.sort((a, b) => a.name < b.name ? -1 : 1));
+
+        function getAuthorized() {
+          window.location.href = '/login';
+        }
+
+        function selectServices(option) {
+          filters.value.servicesSelection = option === 'all' ? services.value.map((service) => service.id) : [];
+        }
+
+        function updateData(data) {
+          clusterName.value = data.clusterName;
+          services.value = data.services.map((service) => {
             service.index = data.services.findIndex((serv) => serv.id === service.id);
             return service;
           })
 
-          this.nodes = data.nodes.map((node) => {
+          nodes.value = data.nodes.map((node) => {
             if (data.tasks) {
               node.tasks = data.tasks
                 .filter(task => task.nodeId === node.id)
                 .map((task) => {
-                  task.service = this.services.find((service) => task.serviceId === service.id);
+                  task.service = services.value.find((service) => task.serviceId === service.id);
                   return task;
                 });
-            } 
+            }
 
             return node;
           });
-        },
-        onSystemThemeChange(event) {
-          this.$vuetify.theme.global.name = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         }
+
+        function onSystemThemeChange(event) {
+          $vuetify.theme.global.name = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
+
+
+        return {
+          clusterName,
+          drawer,
+          filters,
+          sort,
+          services,
+          nodes,
+          sortedNodes,
+          sortedServices,
+          getAuthorized,
+          selectServices,
+          updateData,
+          onSystemThemeChange,
+        };
+      },
+
+      components: {
+        Node,
+        Websocket,
+      },
+
+      mounted() {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.onSystemThemeChange);
       },
       beforeDestroy() {
         window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', this.onSystemThemeChange);
