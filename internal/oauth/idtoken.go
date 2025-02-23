@@ -1,4 +1,4 @@
-package shared
+package oauth
 
 import (
 	"fmt"
@@ -6,10 +6,18 @@ import (
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/jtgasper3/swarm-visualizer/internal/models"
+	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
-func ValidateToken(r *http.Request) (*models.IDTokenClaims, error) {
+type IDTokenClaims struct {
+	jwt.StandardClaims
+	Name  string   `json:"name"`
+	Email string   `json:"email"`
+	Sub   string   `json:"sub"`
+	Roles []string `json:"roles,omitempty"`
+}
+
+func ValidateToken(cfg *config.Config, r *http.Request) (*IDTokenClaims, error) {
 	var rawIDToken string
 	cookie, err := r.Cookie("id_token")
 	if err != nil {
@@ -23,7 +31,7 @@ func ValidateToken(r *http.Request) (*models.IDTokenClaims, error) {
 		rawIDToken = cookie.Value
 	}
 
-	token, err := jwt.ParseWithClaims(rawIDToken, &models.IDTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(rawIDToken, &IDTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -33,7 +41,7 @@ func ValidateToken(r *http.Request) (*models.IDTokenClaims, error) {
 			return nil, fmt.Errorf("missing kid in token header")
 		}
 
-		rsaPublicKey, ok := RsaPublicKeyMap[kid]
+		rsaPublicKey, ok := cfg.OAuthConfig.RsaPublicKeyMap[kid]
 		if !ok {
 			return nil, fmt.Errorf("unknown kid: %s", kid)
 		}
@@ -44,12 +52,12 @@ func ValidateToken(r *http.Request) (*models.IDTokenClaims, error) {
 		return nil, fmt.Errorf("failed to parse ID token: %v", err)
 	}
 
-	claims, ok := token.Claims.(*models.IDTokenClaims)
+	claims, ok := token.Claims.(*IDTokenClaims)
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("unauthorized")
 	}
 
-	if claims.Audience != OAuthConfig.ClientID {
+	if claims.Audience != cfg.OAuthConfig.ClientID {
 		return nil, fmt.Errorf("ID token for a different audience: %s", claims.Audience)
 	}
 
