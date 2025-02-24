@@ -5,19 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
-type IDTokenClaims struct {
-	jwt.StandardClaims
-	Name  string   `json:"name"`
-	Email string   `json:"email"`
-	Sub   string   `json:"sub"`
-	Roles []string `json:"roles,omitempty"`
-}
-
-func ValidateToken(cfg *config.Config, r *http.Request) (*IDTokenClaims, error) {
+func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
 	var rawIDToken string
 	cookie, err := r.Cookie("id_token")
 	if err != nil {
@@ -31,7 +23,7 @@ func ValidateToken(cfg *config.Config, r *http.Request) (*IDTokenClaims, error) 
 		rawIDToken = cookie.Value
 	}
 
-	token, err := jwt.ParseWithClaims(rawIDToken, &IDTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(rawIDToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -52,13 +44,13 @@ func ValidateToken(cfg *config.Config, r *http.Request) (*IDTokenClaims, error) 
 		return nil, fmt.Errorf("failed to parse ID token: %v", err)
 	}
 
-	claims, ok := token.Claims.(*IDTokenClaims)
+	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("unauthorized")
 	}
 
-	if claims.Audience != cfg.OAuthConfig.ClientID {
-		return nil, fmt.Errorf("ID token for a different audience: %s", claims.Audience)
+	if claims["aud"] != cfg.OAuthConfig.ClientID {
+		return nil, fmt.Errorf("ID token for a different audience: %s", claims["aud"])
 	}
 
 	return claims, nil
