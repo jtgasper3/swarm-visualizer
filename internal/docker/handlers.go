@@ -20,12 +20,12 @@ var (
 
 func RegisterDockerHandlers(cfg *config.Config) {
 	go inspectSwarmServices(cfg)
+	go handleBroadcasts()
 
 	http.HandleFunc(cfg.ContextRoot+"ws", func(w http.ResponseWriter, r *http.Request) {
 		handleConnections(cfg, w, r)
 	})
 
-	go handleBroadcasts()
 }
 
 func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Request) {

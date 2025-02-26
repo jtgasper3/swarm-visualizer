@@ -24,6 +24,7 @@ export default {
         const data = event.data;
         if (typeof(data) === 'string' && data.startsWith('401-Unauthorized')) {
           this.$emit('not-authorized');
+          return
         }
 
         const json = JSON.parse(event.data);
