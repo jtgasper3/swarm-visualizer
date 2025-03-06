@@ -3,6 +3,9 @@ name: Image Build
 on:
   push:
 
+permissions:
+  contents: read
+
 env:
   IMAGE_NAME: jtgasper3/swarm-visualizer
 
