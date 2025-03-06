@@ -1,6 +1,6 @@
 module github.com/jtgasper3/swarm-visualizer
 
-go 1.24
+go 1.24.1
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
