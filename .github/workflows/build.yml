@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  secrets: read
 
 env:
   IMAGE_NAME: jtgasper3/swarm-visualizer
