@@ -2,7 +2,7 @@
 Swarm Visualizer
 ================
 
-The Swarm Visualizer extends on the [`dockersamples/docker-swarm-visualizer`](https://github.com/dockersamples/docker-swarm-visualizer) demo'd at the 2015 DockerCon EU keynote.
+The Swarm Visualizer extends on the [`dockersamples/docker-swarm-visualizer`](https://github.com/dockersamples/docker-swarm-visualizer) concept demo'd at the 2015 DockerCon EU keynote.
 
 It's goals are:
  - minimize internal data being exposed to the browser
@@ -52,10 +52,11 @@ OIDC Environment Variables:
 
 - `ENABLE_AUTHN`: `true` enable OIDC authentication support (default: `false`)
 - `OIDC_CLIENT_ID`: standard OAuth client id
-- `OIDC_CLIENT_SECRET`: standard OAuth client secret
+- `OIDC_CLIENT_SECRET_FILE`: path to file containing a standard OAuth client secret
 - `OIDC_REDIRECT_URL`: this app's callback url; should end in `/callback` and will be registered in the identity provider. For example, `https://myswarm.example.internal/visualizer/callback`
 - `OIDC_SCOPES`: comma separated list of scopes. For example, `openid,profile,email`
 - `OIDC_WELL_KNOWN_URL`: Location to lookup the identity provider's public signing key, token and authorization endpoints. For example, `https://auth.example.com/.well-known/openid-configuration`
+- `OIDC_USERNAME_CLAIM`: 
 
 Other Environment Variables:
 
@@ -79,8 +80,7 @@ docker service create --name nginx --replicas=3 nginx:latest
 docker service create --name redis redis:latest
 docker service create --name redis2 redis:latest
 docker service create --name redis3 redis:latest
-docker service create --name redis4 redis:latest
-docker service create --name redis5 redis:latest
+docker service create --name redis4 --mode global redis:latest
 ```
 
 ### Build and test

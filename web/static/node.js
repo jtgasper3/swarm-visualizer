@@ -73,6 +73,10 @@ export default {
           return this.filters.servicesSelection.includes(task.service.id);
         })
         .sort((a, b) => {
+          if (a.service.mode < b.service.mode) return -1;
+          if (a.service.mode > b.service.mode) return 1;
+
+          return 0; // If both properties are equal
           if (this.sort === 'Created') {
             return a.createdAt.localeCompare(b.createdAt);
           }

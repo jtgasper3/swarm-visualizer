@@ -26,8 +26,10 @@ func RegisterOAuthHandlers(cfg *config.Config) {
 			log.Fatalf("Failed to fetch JWKS: %v", err)
 		}
 
-		http.HandleFunc("/login", handleLogin)
-		http.HandleFunc("/callback", handleCallback)
+		http.HandleFunc(cfg.ContextRoot+"login", handleLogin)
+		http.HandleFunc(cfg.ContextRoot+"callback", func(w http.ResponseWriter, r *http.Request) {
+			handleCallback(cfg, w, r)
+		})
 	}
 }
 
@@ -49,7 +51,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
-func handleCallback(w http.ResponseWriter, r *http.Request) {
+func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	token, err := oauthConfig.Exchange(context.Background(), code)
 	if err != nil {
@@ -67,10 +69,10 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		Name:     "id_token",
 		Value:    rawIDToken,
 		MaxAge:   3600,
-		Path:     "/",
+		Path:     cfg.ContextRoot,
 		HttpOnly: true,
 	})
-	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, cfg.ContextRoot, http.StatusTemporaryRedirect)
 }
 
 func fetchWellKnownOIDCConfig(cfg *config.Config) error {

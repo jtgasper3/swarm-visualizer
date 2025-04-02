@@ -26,7 +26,14 @@
       <v-app-bar class="ps-4" flat>
         <v-app-bar-nav-icon v-if="$vuetify.display.mdAndDown" @click="drawer = !drawer"></v-app-bar-nav-icon>
 
-        <v-app-bar-title>{{ clusterName }}</v-app-bar-title>
+        <v-app-bar-title>
+          <WebSocket @update="updateReceivedData" @not-authorized="getAuthorized()">
+            <template #icon="{ state }">
+              <v-badge :color="state === 'connected' ? 'success' : 'error'" dot inline floating :title="state"></v-badge>
+            </template>
+          </WebSocket>
+          {{ clusterName }}
+        </v-app-bar-title>
 
         <!-- <template #append>
             <div class="d-flex ga-2 align-center">
@@ -125,7 +132,6 @@
         </v-container>
       </v-main>
     </v-app>
-    <WebSocket @update="updateData" @not-authorized="getAuthorized()" />
   </div>
 
   <script type="module">
@@ -159,7 +165,9 @@
         const nodes = ref([]);
 
         const sortedNodes = computed(() => nodes.value.sort((a, b) => a.hostname < b.hostname ? -1 : 1));
-        const sortedServices = computed(() => services.value.sort((a, b) => a.name < b.name ? -1 : 1));
+        const sortedServices = computed(() => services.value.sort((a, b) =>{
+          
+        }));
 
         function getAuthorized() {
           window.location.href = '/login';
@@ -169,7 +177,7 @@
           filters.value.servicesSelection = option === 'all' ? services.value.map((service) => service.id) : [];
         }
 
-        function updateData(data) {
+        function updateReceivedData(data) {
           clusterName.value = data.clusterName;
           services.value = data.services.map((service) => {
             service.index = data.services.findIndex((serv) => serv.id === service.id);
@@ -206,7 +214,7 @@
           sortedServices,
           getAuthorized,
           selectServices,
-          updateData,
+          updateReceivedData,
           onSystemThemeChange,
         };
       },

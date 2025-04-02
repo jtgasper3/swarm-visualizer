@@ -44,7 +44,7 @@ func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Reques
 			log.Printf("Client unauthorized: %s %v", r.RemoteAddr, err)
 			return
 		}
-		log.Printf("Client connected: %s, %s", r.RemoteAddr, claims["email"])
+		log.Printf("Client connected: %s, %s", r.RemoteAddr, claims[cfg.OAuthConfig.UsernameClaim])
 	} else {
 		log.Printf("Client connected: %s", r.RemoteAddr)
 	}

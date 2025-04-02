@@ -2,6 +2,7 @@ package config
 
 import (
 	"crypto/rsa"
+	"log"
 	"os"
 	"strings"
 )
@@ -23,6 +24,7 @@ type OAuthConfig struct {
 	TokenURL         string
 	OIDCWellKnownURL string
 	RsaPublicKeyMap  map[string]*rsa.PublicKey
+	UsernameClaim    string
 }
 
 const (
@@ -38,6 +40,16 @@ func LoadConfig() *Config {
 		contextRoot += "/"
 	}
 
+	clientSecret := ""
+	clientSecretFile := os.Getenv("OIDC_CLIENT_SECRET_FILE")
+	if clientSecretFile != "" {
+		clientSecretBytes, err := os.ReadFile(clientSecretFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		clientSecret = string(clientSecretBytes)
+	}
+
 	return &Config{
 		ClusterName:  os.Getenv("CLUSTER_NAME"),
 		ContextRoot:  contextRoot,
@@ -45,13 +57,14 @@ func LoadConfig() *Config {
 		AuthEnabled:  authEnabled,
 		OAuthConfig: OAuthConfig{
 			ClientID:         os.Getenv("OIDC_CLIENT_ID"),
-			ClientSecret:     os.Getenv("OIDC_CLIENT_SECRET"),
+			ClientSecret:     strings.TrimSpace(clientSecret),
 			RedirectURL:      os.Getenv("OIDC_REDIRECT_URL"),
 			Scopes:           strings.Split(os.Getenv("OIDC_SCOPES"), ","),
 			AuthURL:          os.Getenv("OIDC_AUTH_URL"),
 			TokenURL:         os.Getenv("OIDC_TOKEN_URL"),
 			OIDCWellKnownURL: os.Getenv("OIDC_WELL_KNOWN_URL"),
 			RsaPublicKeyMap:  make(map[string]*rsa.PublicKey),
+			UsernameClaim:    getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
 		},
 	}
 }

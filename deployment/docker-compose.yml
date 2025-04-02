@@ -4,22 +4,29 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
     env_file: "../dev.env"
     environment:
       - CLUSTER_NAME=Local Swarm
       - ENABLE_AUTHN=true
       - ENABLE_AUTHZ=true
       # Other OIDC (sensitive) variables are set in the .gitignore'd env file
+      - OIDC_CLIENT_SECRET_FILE=/run/secrets/client_secret
       - OIDC_REDIRECT_URL=http://localhost:8080/callback
-      - OIDC_SCOPES=openid,profile,email
+      - OIDC_SCOPES=openid,profile
       # - CONTEXT_ROOT=/testing
     ports:
       - "8080:8080"
+    restart: always
+    secrets:
+      - client_secret
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - $PWD/web/static:/static
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
-    restart: always
+    
+secrets:
+  client_secret:
+    file: ../client_secret.txt

@@ -1,5 +1,5 @@
 export default {
-  template: `<span />`,
+  template: `<slot name="icon" :state="reconnectAttempts === 0 ? 'connected' : 'disconnected'"></slot>`,
   data() {
     return {
       ws: null,
@@ -7,6 +7,7 @@ export default {
       maxReconnectInterval: 30000 // 30 seconds
     }
   },
+  emits: ['update', 'not-authorized'],
   mounted() {
     this.connectWebSocket();
   },
