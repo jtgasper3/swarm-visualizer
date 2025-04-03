@@ -37,6 +37,7 @@ type taskViewModel struct {
 	Name         string    `json:"name"`
 	NodeID       string    `json:"nodeId"`
 	ServiceID    string    `json:"serviceId"`
+	ContainerID  string    `json:"containerId"`
 	DesiredState string    `json:"desiredState"`
 	State        string    `json:"state"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -136,6 +137,7 @@ func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Ar
 			ID:           task.ID,
 			NodeID:       task.NodeID,
 			ServiceID:    task.ServiceID,
+			ContainerID:  task.Status.ContainerStatus.ContainerID,
 			DesiredState: string(task.DesiredState),
 			State:        string(task.Status.State),
 			CreatedAt:    task.CreatedAt,

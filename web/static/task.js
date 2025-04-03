@@ -15,7 +15,8 @@ export default {
           {{ task.service.name }}
         </v-card-title>
         <v-card-subtitle>
-          Task id: {{ task.id }}
+          Task id: {{ task.id }} <br />
+          Container id: {{ task.containerId.substring(0, 12) }} <br />
         </v-card-subtitle>
       </v-card-item>
 
