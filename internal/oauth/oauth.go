@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 	"golang.org/x/oauth2"
@@ -26,7 +28,9 @@ func RegisterOAuthHandlers(cfg *config.Config) {
 			log.Fatalf("Failed to fetch JWKS: %v", err)
 		}
 
-		http.HandleFunc(cfg.ContextRoot+"login", handleLogin)
+		http.HandleFunc(cfg.ContextRoot+"login", func(w http.ResponseWriter, r *http.Request) {
+			handleLogin(cfg, w, r)
+		})
 		http.HandleFunc(cfg.ContextRoot+"callback", func(w http.ResponseWriter, r *http.Request) {
 			handleCallback(cfg, w, r)
 		})
@@ -46,12 +50,33 @@ func setupOAuthConfig(cfg *config.OAuthConfig) *oauth2.Config {
 	}
 }
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	url := oauthConfig.AuthCodeURL("randomstate")
+func handleLogin(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
+	state, err := generateSecureRandomString(32)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to generate state: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	url := oauthConfig.AuthCodeURL(state)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "nonce",
+		Value:    state,
+		Path:     cfg.ContextRoot,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode, // Set SameSite attribute
+	})
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
 func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
+	nonceCookie, err := r.Cookie("nonce")
+	if err != nil || nonceCookie.Value != r.URL.Query().Get("state") {
+		clearNonceCookie(cfg, w)
+		http.Error(w, "Invalid state", http.StatusBadRequest)
+		return
+	}
+
 	code := r.URL.Query().Get("code")
 	token, err := oauthConfig.Exchange(context.Background(), code)
 	if err != nil {
@@ -64,6 +89,8 @@ func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "No id_token found", http.StatusInternalServerError)
 		return
 	}
+
+	clearNonceCookie(cfg, w)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "id_token",
@@ -135,4 +162,35 @@ func fetchWellKnownOIDCConfig(cfg *config.Config) error {
 		cfg.OAuthConfig.RsaPublicKeyMap[key.Kid] = cert.PublicKey.(*rsa.PublicKey)
 	}
 	return nil
+}
+
+func clearNonceCookie(cfg *config.Config, w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "nonce",
+		Value:    "",
+		Path:     cfg.ContextRoot,
+		HttpOnly: true,
+		Secure:   true,
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	})
+}
+
+func generateSecureRandomString(length int) (string, error) {
+	// Calculate the number of random bytes needed (base64 encoding expands data by ~33%)
+	numBytes := (length*6 + 7) / 8 // Approximation for Base64 encoding
+	bytes := make([]byte, numBytes)
+
+	// Read cryptographically secure random bytes
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	// Encode to Base64 and truncate to the desired length
+	randomString := base64.RawURLEncoding.EncodeToString(bytes)
+	if len(randomString) > length {
+		randomString = randomString[:length]
+	}
+	return randomString, nil
 }
