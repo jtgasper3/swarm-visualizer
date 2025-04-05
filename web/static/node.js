@@ -48,9 +48,15 @@ export default {
     sortedAndFilteredServices(tasks) {
       return tasks
         .filter(task => {
-          const filterText = this.filters.filterText ? this.filters.filterText.trim() : '';
-          if (filterText.length >= 0 && task.service.name.toLowerCase().includes(filterText.toLowerCase())) {
-            return true;
+          const filterText = (this.filters.filterText ? this.filters.filterText.trim() : '').toLowerCase();
+          if (filterText.length >= 0){
+            if (task.service.name.toLowerCase().includes(filterText)) {
+              return true;
+            } else if (task.id.startsWith(filterText)) {
+              return true;
+            } else if (task.containerId.startsWith(filterText)) {
+              return true;
+            }
           }
           return false;
         })
