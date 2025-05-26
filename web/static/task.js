@@ -10,21 +10,25 @@ export default {
       class="d-flex flex-column mb-2"
     >
       <v-card-item>
-        <v-card-title v-if="task.service">
+        <v-card-title v-if="task.service" class="text-subtitle-1 font-weight-bold">
           <v-badge :color="taskStatus(task.state)" dot inline floating :title="task.state"></v-badge>
-          {{ task.service.name }}
+          <span :title="task.service.name">{{ task.service.name }}</span>
         </v-card-title>
         <v-card-subtitle>
-          Task id: {{ task.id }} <br />
-          Container id: {{ task.containerId.substring(0, 12) }} <br />
+          Task id: <span :title="task.id">{{ task.id }}</span> <br />
+          Container id: <span :title="task.containerId.substring(0, 12)">{{ task.containerId.substring(0, 12) }}</span><br />
         </v-card-subtitle>
       </v-card-item>
 
       <v-card-text v-if="task.service" class="mt-n2">
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ task.service.mode }}</v-chip>
         <v-spacer />
-        <span class="text-medium flex-1-1-100">
-          Image: {{ task.service.image.split('@')[0] }}
+        <span class="text-medium trailing-overflow-container">
+          Image:
+          <span :title="task.service.image.split('@')[0]"
+            class="trailing-overflow">
+            {{ task.service.image.split('@')[0] }}
+          </span>
         </span>
         <v-spacer />
         <span class="text-small-emphasis">

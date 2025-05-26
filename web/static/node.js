@@ -5,8 +5,8 @@ export default {
     <v-card  color="primary-lighten-4" rounded="lg" variant="tonal">
       <v-card-item>
         <v-card-title>
-          <v-badge :color="nodeStatus(node.status)" dot inline floating :title="node.status"></v-badge> {{
-          node.hostname }}
+          <v-badge :color="nodeStatus(node.status)" dot inline floating :title="node.status"></v-badge>
+          <span :title="node.hostname">{{ node.hostname }}</span>
           <span v-if="node.availability !== 'active'">({{ node.availability }})</span>
         </v-card-title>
         <v-card-subtitle>id: {{ node.id }}</v-card-subtitle>
@@ -48,29 +48,17 @@ export default {
     sortedAndFilteredServices(tasks) {
       return tasks
         .filter(task => {
-          const filterText = (this.filters.filterText ? this.filters.filterText.trim() : '').toLowerCase();
-          if (filterText.length >= 0){
-            if (task.service.name.toLowerCase().includes(filterText)) {
-              return true;
-            } else if (task.id.startsWith(filterText)) {
-              return true;
-            } else if (task.containerId.startsWith(filterText)) {
-              return true;
-            }
+          const filterText = this.filters.filterText ? this.filters.filterText.trim() : '';
+          if (filterText.length >= 0 && task.service.name.toLowerCase().includes(filterText.toLowerCase())) {
+            return true;
           }
           return false;
         })
         .filter(task => {
-          if (!this.filters.globalIncluded && task.service.mode === 'global') {
-            return false;
+          if (!this.filters.serviceMode) {
+            return true;
           }
-          return true;
-        })
-        .filter(task => {
-          if (!this.filters.replicasIncluded && task.service.mode === 'replicated') {
-            return false;
-          }
-          return true;
+          return task.service.mode === this.filters.serviceMode
         })
         .filter(task => {
           if (this.filters.service === 'all') {
@@ -81,8 +69,8 @@ export default {
         .sort((a, b) => {
           if (a.service.mode < b.service.mode) return -1;
           if (a.service.mode > b.service.mode) return 1;
-
-          return 0; // If both properties are equal
+          // return 0; // If both properties are equal
+          
           if (this.sort === 'Created') {
             return a.createdAt.localeCompare(b.createdAt);
           }

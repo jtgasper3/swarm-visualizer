@@ -8,6 +8,26 @@
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
   <link href="https://fonts.bunny.net/css?family=roboto:400,500,700" rel="stylesheet" />
 
+  <style>
+    .server-card {
+      flex: 1 1 240px;
+    }
+
+    .trailing-overflow {
+      direction: rtl;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+    }
+
+    .trailing-overflow-container {
+      display: inline-block;
+      width: 100%;
+      white-space: nowrap;
+    }
+  </style>
+  
   <script type="importmap">
     {
       "imports": {
@@ -24,7 +44,7 @@
   <div id="app">
     <v-app>
       <v-app-bar class="ps-4" flat>
-        <v-app-bar-nav-icon v-if="$vuetify.display.mdAndDown" @click="drawer = !drawer"></v-app-bar-nav-icon>
+        <v-app-bar-nav-icon v-if="$vuetify.display.lgAndDown" @click="drawer = !drawer"></v-app-bar-nav-icon>
 
         <v-app-bar-title>
           <WebSocket @update="updateReceivedData" @not-authorized="getAuthorized()">
@@ -35,70 +55,91 @@
           {{ clusterName }}
         </v-app-bar-title>
 
-        <!-- <template #append>
-            <div class="d-flex ga-2 align-center">
-              <v-btn color="medium-emphasis" icon="mdi-magnify" />
-
-              <v-btn color="medium-emphasis" icon="mdi-bell-outline" />
-
-              <v-btn color="medium-emphasis" icon="mdi-email-outline">
+        <template #append>
+            <div class="ga-2 align-center">
+              <!-- <v-btn color="medium-emphasis" icon="mdi-email-outline">
                 <v-badge color="error" content="1" dot>
                   <v-icon />
                 </v-badge>
               </v-btn>
 
-              <v-divider class="align-self-center" length="24" vertical />
-
+              <v-divider class="align-self-center" length="24" vertical></v-divider>
+ 
               <v-btn class="me-2" height="48" icon>
                 <v-avatar color="surface-light" image="https://cdn.vuetifyjs.com/images/john.png" size="32" />
 
                 <v-menu activator="parent">
                   <v-list density="compact" nav>
-                    <v-list-item append-icon="mdi-cog-outline" link title="Settings" />
+                    <v-list-item append-icon="mdi-cog-outline" link title="Settings"></v-list-item>
 
-                    <v-list-item append-icon="mdi-logout" link title="Logout" />
+                    <v-list-item append-icon="mdi-logout" link title="Logout"></v-list-item>
                   </v-list>
                 </v-menu>
               </v-btn>
+              -->
             </div>
-          </template> -->
+          </template>
       </v-app-bar>
 
-      <v-navigation-drawer v-model="drawer" width="280">
+      <v-navigation-drawer v-model="drawer" color="surface-light" width="280">
         <div class="px-2">
-          <v-list density="comfortable" nav slim>
+          <v-list v-model:selected="filters.nodesSelection" density="comfortable" nav slim select-strategy="leaf">
             <span class="font-weight-bold">FILTER</span>
-
-            <v-list-item>
-              <v-text-field v-model="filters.filterText" bg-color="surface-light" color="primary" density="compact"
-                hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify" rounded="lg" variant="outlined">
-                <v-divider class="me-2 align-self-center" length="20" vertical />
-
-                <template #clear="{ props: clearProps }">
-                  <v-icon v-bind="clearProps" size="18" />
-                </template>
-              </v-text-field>
-            </v-list-item>
-          </v-list>
-
-          <v-list v-model:selected="filters.servicesSelection" density="comfortable" nav slim select-strategy="leaf">
-            <v-list-subheader class="font-weight-bold">SERVICES
-              (<v-btn size="x-small" slim @click="selectServices('all')">all</v-btn>/<v-btn size="x-small" slim
-                @click="selectServices('none')">none</v-btn>)</v-list-subheader>
-            <v-list-item v-for="service in sortedServices" :key="service.id" :title="service.name" :value="service.id">
-              <template v-slot:prepend="{ isSelected }">
+            
+            <v-list-subheader class="font-weight-bold">NODES
+              (<v-btn size="x-small" slim color="primary" variant="text" @click="selectNodes('all')">all</v-btn>/<v-btn size="x-small" slim color="primary" variant="text"
+                @click="selectNodes('none')">none</v-btn>)</v-list-subheader>
+            <v-list-item v-for="node in sortedNodes" :key="node.id" :title="node.hostname" :value="node.id" density="compact">
+              <template v-slot:prepend="{ isSelected, select }">
                 <v-list-item-action start>
-                  <v-checkbox-btn :model-value="isSelected" density="compact" hide-details></v-checkbox-btn>
+                  <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" color="primary" hide-details></v-checkbox-btn>
                 </v-list-item-action>
               </template>
             </v-list-item>
           </v-list>
 
           <v-list density="comfortable" nav slim>
-            <v-list-subheader class="font-weight-bold">TYPE</v-list-subheader>
-            <v-switch v-model="filters.globalIncluded" label="Global" density="compact" hide-details></v-switch>
-            <v-switch v-model="filters.replicasIncluded" label="Replicated" density="compact" hide-details></v-switch>
+            <v-list-subheader class="font-weight-bold">ROLE</v-list-subheader>
+            <v-btn-toggle
+              v-model="filters.nodeRoles"
+              color="primary"
+              divided
+              rounded="pill"
+              density="compact"
+            >
+              <v-btn size="x-small" value="manager">Managers</v-btn>
+              <v-btn size="x-small" :value="false">Both</v-btn>
+              <v-btn size="x-small" value="worker">Workers</v-btn>
+            </v-btn-toggle>
+          </v-list>
+
+          <v-list v-model:selected="filters.servicesSelection" density="comfortable" nav slim select-strategy="leaf">
+            <v-list-subheader class="font-weight-bold">SERVICES
+              (<v-btn size="x-small" slim color="primary" variant="text" @click="selectServices('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
+                @click="selectServices('none')">none</v-btn>)</v-list-subheader>
+            <v-list-item v-for="service in sortedServices" :key="service.id" :title="service.name" :value="service.id" density="compact">
+              <template v-slot:prepend="{ isSelected, select }">
+                <v-list-item-action start>
+                  <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
+                </v-list-item-action>
+              </template>
             </v-list-item>
+          </v-list>
+
+          <v-list density="comfortable" nav slim>
+            <v-list-subheader class="font-weight-bold">MODE</v-list-subheader>
+              <v-btn-toggle
+                v-model="filters.serviceMode"
+                color="primary"
+                divided
+                rounded="pill"
+                density="compact"
+              >
+                <v-btn size="x-small" value="replicated">Replicated</v-btn>
+                <v-btn size="x-small" :value="false">Both</v-btn>
+                <v-btn size="x-small" value="global">Global</v-btn>
+              </v-btn-group>
+            </v-btn-toggle>
           </v-list>
 
           <!-- <v-list v-if="filters.replicasIncluded" density="comfortable" nav slim>
@@ -109,10 +150,23 @@
             </v-list> -->
 
           <v-list density="comfortable" nav slim>
+            <v-list-item>
+              <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" density="compact"
+                hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify" rounded="lg" variant="outlined">
+                <v-divider class="me-2 align-self-center" length="20" vertical />
+
+                <template #clear="{ props: clearProps }">
+                  <v-icon v-bind="clearProps" size="18" />
+                </template>
+              </v-text-field>
+            </v-list-item>
+          </v-list>
+          
+          <v-list density="comfortable" nav slim>
             <span class="font-weight-bold">SORT</span>
 
             <v-list-item>
-              <v-select density="compact" flat hide-details :items="['Service Name', 'Created']" label="Country"
+              <v-select density="compact" flat hide-details color="primary" bg-color="surface"  :items="['Service Name', 'Created']" label="Country"
                 :list-props="{ density: 'compact', rounded: 't-0' }" v-model="sort" single-line variant="solo" />
             </v-list-item>
           </v-list>
@@ -123,9 +177,14 @@
         </template>
       </v-navigation-drawer>
       <v-main>
-        <v-container class="pa-md-12 mx-auto" fluid>
-          <v-row>
-            <v-col v-for="node in sortedNodes" :key="node.id" class="d-flex" cols="12" lg="3" sm="6">
+        <v-container fluid>
+          <v-row class="d-flex flex-wrap ga-4">
+            <v-col v-for="node in filteredNodes"
+              :key="node.id"
+              class="server-card"
+              style="max-width: 19rem"
+              cols="auto"
+            >
               <Node :node="node" :filters="filters" :sort="sort" />
             </v-col>
           </v-row>
@@ -152,29 +211,63 @@
       setup() {
         const clusterName = ref('Loading...');
         const drawer = ref(true);
-        const filters = useStorage('filters', {
+        const filters = useStorage('filters.2', {
           filterText: '',
-          servicesSelection: [],
-          globalIncluded: true,
-          replicasIncluded: true,
+          nodesSelection: new Array(),
+          servicesSelection: new Array(),
+          nodeRoles: false,
+          serviceMode: false,
           // replicas: [0, 10]
+        },
+        undefined,
+        {
+          serializer: {
+            read: (v) => v ? JSON.parse(v) : null,
+            write: (v) => JSON.stringify(v),
+          },
         });
 
         const sort = useStorage('sort', 'Service Name');
         const services = ref([]);
         const nodes = ref([]);
 
-        const sortedNodes = computed(() => nodes.value.sort((a, b) => a.hostname < b.hostname ? -1 : 1));
-        const sortedServices = computed(() => services.value.sort((a, b) =>{
-          
-        }));
+        const sortedNodes = computed(() => nodes.value.sort((a, b) => a.hostname.localeCompare(b.hostname)));
+        const sortedServices = computed(() => services.value.sort((a, b) => a.name.localeCompare(b.name)));
+        const filteredNodes = computed(() => sortedNodes.value
+          .filter(node => {
+            if (!filters.value.nodeRoles) {
+              return true;
+            }
+            return node.role === filters.value.nodeRoles;
+          })
+          .filter(node => {
+            if (filters.node === 'all') {
+              return true;
+            }
+            return filters.value.nodesSelection.includes(node.id);
+          })
+        );
 
         function getAuthorized() {
           window.location.href = window.location.pathname + 'login';
         }
 
+        function selectNodes(option) {
+          if (option === 'all') {
+            const uniqueItems = nodes.value.filter(node => !filters.value.nodesSelection.includes(node.id)).map((node => node.id))
+            filters.value.nodesSelection.push(...uniqueItems)
+          } else {
+            filters.value.nodesSelection.length = 0
+          }
+        }
+        
         function selectServices(option) {
-          filters.value.servicesSelection = option === 'all' ? services.value.map((service) => service.id) : [];
+          if (option === 'all') {
+            const uniqueItems = services.value.filter(service => !filters.value.servicesSelection.includes(service.id)).map((service => service.id))
+            filters.value.servicesSelection.push(...uniqueItems)
+          } else {
+            filters.value.servicesSelection.length = 0
+          }
         }
 
         function updateReceivedData(data) {
@@ -210,9 +303,11 @@
           sort,
           services,
           nodes,
+          filteredNodes,
           sortedNodes,
           sortedServices,
           getAuthorized,
+          selectNodes,
           selectServices,
           updateReceivedData,
           onSystemThemeChange,
