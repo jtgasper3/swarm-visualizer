@@ -61,19 +61,17 @@ func inspectSwarmServices(cfg *config.Config) {
 	filterArgs := filters.NewArgs()
 	filterArgs.Add("desired-state", "running")
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatal("Docker client error:", err)
 	}
 
 	for {
-		ctx, ctxCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx := context.Background()
 
 		nodeViewModels, errNode := getNodesInfo(ctx, cli)
 		taskViewModels, errTask := getTasksInfo(ctx, cli, filterArgs)
 		serviceViewModels, errService := getServicesInfo(ctx, cli)
-
-		ctxCancel()
 
 		if errNode != nil || errTask != nil || errService != nil {
 			time.Sleep(sleepDuration)
