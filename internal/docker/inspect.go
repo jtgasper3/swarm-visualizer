@@ -131,11 +131,16 @@ func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Ar
 	}
 	var taskViewModels []taskViewModel
 	for _, task := range tasks {
+		var containerId string
+		if task.Status.ContainerStatus != nil && task.Status.ContainerStatus.ContainerID != "" {
+			containerId = task.Status.ContainerStatus.ContainerID
+		}
+
 		taskViewModels = append(taskViewModels, taskViewModel{
 			ID:           task.ID,
 			NodeID:       task.NodeID,
 			ServiceID:    task.ServiceID,
-			ContainerID:  task.Status.ContainerStatus.ContainerID,
+			ContainerID:  containerId,
 			DesiredState: string(task.DesiredState),
 			State:        string(task.Status.State),
 			CreatedAt:    task.CreatedAt,
