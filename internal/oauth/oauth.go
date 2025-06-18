@@ -64,7 +64,7 @@ func handleLogin(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
 		Path:     cfg.ContextRoot,
 		HttpOnly: true,
 		Secure:   true,
-		SameSite: http.SameSiteStrictMode, // Set SameSite attribute
+		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
@@ -98,6 +98,8 @@ func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) 
 		MaxAge:   3600,
 		Path:     cfg.ContextRoot,
 		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 	})
 	http.Redirect(w, r, cfg.ContextRoot, http.StatusTemporaryRedirect)
 }
