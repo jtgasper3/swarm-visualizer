@@ -3,7 +3,7 @@ module github.com/jtgasper3/swarm-visualizer
 go 1.24.4
 
 require (
-	github.com/docker/docker v28.4.0+incompatible
+	github.com/docker/docker v28.5.1+incompatible
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/oauth2 v0.31.0
