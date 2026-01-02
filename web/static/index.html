@@ -184,8 +184,8 @@
       </v-navigation-drawer>
       <v-main aria-label="Nodes and Services List">
         <v-container fluid>
-          <v-row class="d-flex flex-wrap ga-4">
-            <v-list aria-label="Swarm Nodes" class="pa-0">
+          <v-list aria-label="Swarm Nodes" class="pa-0">
+            <v-row class="d-flex flex-wrap ga-4">
               <v-col v-for="node in filteredNodes"
                 :key="node.id"
                 class="server-card pa-1"
@@ -196,8 +196,8 @@
                   <Node :node="node" :filters="filters" :sort="sort" />
                 </v-list-item>
               </v-col>
-            </v-list>
-          </v-row>
+            </v-row>
+          </v-list>
         </v-container>
       </v-main>
     </v-app>
