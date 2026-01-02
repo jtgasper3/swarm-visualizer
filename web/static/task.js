@@ -1,6 +1,3 @@
-// https://htmlcolorcodes.com/color-chart/
-const taskColors = [ '#039be5', '#3949ab', '#FF80F2', '#e53935', '#fb8c00', '#8e24aa', '#fdd835', '#80FF8D', '#00897b', '#00acc1', '#6d4c41', '#80B3FF', '#CC80FF', '#7cb342',];
-
 import { formatBytes } from './utils.js';
 
 export default {
@@ -97,23 +94,11 @@ export default {
       }
     },
     calcStyle(index) {
-
-      //Switch style based on index 
-      let style
-
-      switch (Math.trunc(index / taskColors.length)) {
-        case 0:
-          style = "solid"
-          break
-        case 1:
-          style = "dashed"
-          break
-        case 2:
-          style = "dotted"
-          break
-        default:
-          style = "double"
-      }
+      // https://htmlcolorcodes.com/color-chart/
+      const taskColors = [ '#039be5', '#3949ab', '#FF80F2', '#e53935', '#fb8c00', '#8e24aa', '#fdd835', '#80FF8D', '#00897b', '#00acc1', '#6d4c41', '#80B3FF', '#CC80FF', '#7cb342',];
+      const borderStyles = ['solid', 'dashed', 'dotted', 'groove', 'inset', 'double'];
+      
+      const style = borderStyles[Math.trunc(index / taskColors.length) % borderStyles.length];
 
       return {
         'border-color': taskColors[index % taskColors.length],
