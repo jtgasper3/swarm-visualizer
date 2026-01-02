@@ -209,16 +209,31 @@ func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewMode
 			replicas = &r
 		}
 
+		var reservationsCpu int64 = 0
+		var reservationsMemory int64 = 0
+		var limitsCpu int64 = 0
+		var limitsMemory int64 = 0
+		if service.Spec.TaskTemplate.Resources != nil {
+			if service.Spec.TaskTemplate.Resources.Reservations != nil {
+				reservationsCpu = service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1e9
+				reservationsMemory = service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes
+			}
+			if service.Spec.TaskTemplate.Resources.Limits != nil {
+				limitsCpu = service.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1e9
+				limitsMemory = service.Spec.TaskTemplate.Resources.Limits.MemoryBytes
+			}
+		}
+
 		serviceViewModels = append(serviceViewModels, serviceViewModel{
 			ID:                 service.ID,
 			Name:               service.Spec.Name,
 			Image:              service.Spec.TaskTemplate.ContainerSpec.Image,
 			Mode:               mode,
 			Replicas:           replicas,
-			ReservationsCpu:    service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1e9,
-			ReservationsMemory: service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
-			LimitsCpu:          service.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1e9,
-			LimitsMemory:       service.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
+			ReservationsCpu:    reservationsCpu,
+			ReservationsMemory: reservationsMemory,
+			LimitsCpu:          limitsCpu,
+			LimitsMemory:       limitsMemory,
 			Networks:           service.Spec.TaskTemplate.Networks,
 		})
 	}
