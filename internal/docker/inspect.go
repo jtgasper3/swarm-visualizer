@@ -124,7 +124,7 @@ func getNetworksInfo(ctx context.Context, cli *client.Client) ([]networkViewMode
 		return nil, err
 	}
 
-	var networkViewModels []networkViewModel
+	networkViewModels := make([]networkViewModel, 0, len(networks))
 	for _, network := range networks {
 		if !network.Ingress {
 			networkViewModels = append(networkViewModels, networkViewModel{
@@ -143,7 +143,7 @@ func getNodesInfo(ctx context.Context, cli *client.Client) ([]nodeViewModel, err
 		return nil, err
 	}
 
-	var nodeViewModels []nodeViewModel
+	nodeViewModels := make([]nodeViewModel, 0, len(nodes))
 	for _, node := range nodes {
 		nodeViewModels = append(nodeViewModels, nodeViewModel{
 			ID:                   node.ID,
@@ -166,7 +166,8 @@ func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Ar
 		log.Printf("Error fetching tasks: %v", err)
 		return nil, err
 	}
-	var taskViewModels []taskViewModel
+
+	taskViewModels := make([]taskViewModel, 0, len(tasks))
 	for _, task := range tasks {
 		var containerId string
 		if task.Status.ContainerStatus != nil && task.Status.ContainerStatus.ContainerID != "" {
@@ -194,7 +195,7 @@ func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewMode
 		return nil, err
 	}
 
-	var serviceViewModels []serviceViewModel
+	serviceViewModels := make([]serviceViewModel, 0, len(services))
 	for _, service := range services {
 		mode := "unknown"
 		if service.Spec.Mode.Replicated != nil {
