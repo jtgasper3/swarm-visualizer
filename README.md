@@ -77,10 +77,9 @@ docker swarm init
 
 ```
 docker service create --name nginx --replicas=3 nginx:latest
-docker service create --name redis redis:latest
+docker service create --name redis --reserve-memory 4mib --reserve-cpu 1 redis:latest
 docker service create --name redis2 redis:latest
-docker service create --name redis3 redis:latest
-docker service create --name redis4 --mode global redis:latest
+docker service create --name redis3 --mode global redis:latest
 ```
 
 ### Build and test

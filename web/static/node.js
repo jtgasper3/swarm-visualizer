@@ -1,4 +1,5 @@
 import Task from './task.js';
+import { formatBytes } from './utils.js';
 
 export default {
   template: `
@@ -17,6 +18,7 @@ export default {
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.platformArchitecture
           }}</v-chip>
         <v-spacer />
+        CPU Cores: {{ node.cpuCores }}<br/>
         Memory: {{ formatBytes(node.memoryBytes) }}
       </v-card-text>
 
@@ -28,23 +30,17 @@ export default {
   components: {
     Task
   },
+  data() {
+    return {
+      formatBytes: formatBytes, // make the utility function available in the template
+    }
+  },
   props: {
     node: Object,
     filters: Object,
     sort: String,
   },
   methods: {
-    formatBytes(bytes) {
-      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-      let unitIndex = 0;
-
-      while (bytes >= 1024 && unitIndex < units.length - 1) {
-        bytes /= 1024;
-        unitIndex++;
-      }
-
-      return `${bytes.toFixed(2)} ${units[unitIndex]}`;
-    },
     sortedAndFilteredServices(tasks) {
       return tasks
         .filter(task => {

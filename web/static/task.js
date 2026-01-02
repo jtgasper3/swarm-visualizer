@@ -1,6 +1,8 @@
 // https://htmlcolorcodes.com/color-chart/
 const taskColors = [ '#039be5', '#3949ab', '#8e24aa', '#e53935', '#fb8c00', '#fdd835', '#7cb342', '#00897b', '#00acc1', '#6d4c41', ];
 
+import { formatBytes } from './utils.js';
+
 export default {
   template: `
     <v-card
@@ -9,39 +11,59 @@ export default {
       rounded="lg"
       class="d-flex flex-column mb-2"
     >
-      <v-card-item>
+      <v-card-item density="compact" class="pa-1">
         <v-card-title v-if="task.service" class="text-subtitle-1 font-weight-bold">
           <v-badge :color="taskStatus(task.state)" dot inline floating :title="task.state"></v-badge>
           <span :title="task.service.name">{{ task.service.name }}</span>
+          <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ task.service.mode }}</v-chip>
         </v-card-title>
-        <v-card-subtitle>
-          Task id: <span :title="task.id">{{ task.id }}</span> <br />
-          Container id: <span :title="task.containerId.substring(0, 12)">{{ task.containerId.substring(0, 12) }}</span><br />
-        </v-card-subtitle>
       </v-card-item>
 
-      <v-card-text v-if="task.service" class="mt-n2">
-        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ task.service.mode }}</v-chip>
-        <v-spacer />
-        <span class="text-medium trailing-overflow-container">
-          Image:
-          <span :title="task.service.image.split('@')[0]"
-            class="trailing-overflow">
-            {{ task.service.image.split('@')[0] }}
-          </span>
-        </span>
-        <v-spacer />
-        <span class="text-small-emphasis">
-          Created: {{ this.$vuetify.date.format(task.createdAt, 'keyboardDateTime12h') }}
-        </span>
+      <v-card-text v-if="task.service" class="mt-n2 pb-0">
+        <v-list density="compact" lines="false" class="pt-0">
+          <v-list-item class="pa-0" min-height="12">
+            <template #title><span class="text-body-2">Image: {{ task.service.image.split('@')[0] }}</span></template>
+          </v-list-item>
+          <v-list-item class="pa-0" min-height="12">
+            <template #title><span class="text-body-2">Container id: <span :title="task.containerId.substring(0, 12)">{{ task.containerId.substring(0, 12) }}</span></span></template>
+          </v-list-item>
+
+          <v-expand-transition>
+            <div v-if="open">
+              <v-list-item class="pa-0" min-height="12">
+                <template #title><span class="text-body-2">Task id: <span :title="task.id">{{ task.id }}</span></span></template>
+              </v-list-item>
+              <v-list-item class="pa-0" min-height="12">
+                <template #title><span class="text-body-2">Reservations and Limits</span></template>
+              </v-list-item>
+              <v-list-item class="pt-0 pb-0" min-height="12">
+                <template #title><span class="text-body-2">CPU: {{ task.service.reservationsCpu }} / {{task.service.limitsCpu }} <br/></span></template>
+              </v-list-item>
+              <v-list-item class="pt-0 pb-0" min-height="12">
+                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.reservationsMemory) }} / {{ formatBytes(task.service.limitsMemory) }}</span></template>
+              </v-list-item>
+            </div>
+          </v-expand-transition>
+          <v-list-item class="pa-0" min-height="12">
+            <template #title><span class="text-body-2">Created: {{ this.$vuetify.date.format(task.createdAt, 'keyboardDateTime12h') }}</span></template>
+          </v-list-item>
+        </v-list>
       </v-card-text>
-      <!-- <v-card-actions>
+
+      <v-card-actions class="pa-0 mt-n2" style="min-height: 12px;">
+        <!-- <v-btn append-icon="mdi-chevron-right" class="text-none" slim text="Download receipt" /> -->
         <v-spacer />
 
-        <v-btn class="text-none" color="primary" text="Get Started" />
-      </v-card-actions> -->
+        <v-btn density="comfortable" :icon="open ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="open = !open" />
+      </v-card-actions>
     </v-card>
     `,
+  data() {
+    return {
+      open: false,
+      formatBytes: formatBytes, // make the utility function available in the template
+    }
+  },
   props: {
     task: Object,
   },

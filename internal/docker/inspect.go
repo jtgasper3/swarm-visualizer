@@ -21,15 +21,20 @@ type nodeViewModel struct {
 	Role                 string `json:"role"`
 	PlatformArchitecture string `json:"platformArchitecture"`
 	MemoryBytes          int64  `json:"memoryBytes"`
+	CpuCores             int64  `json:"cpuCores"`
 	Availability         string `json:"availability"`
 	Status               string `json:"status"`
 }
 
 type serviceViewModel struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Image string `json:"image"`
-	Mode  string `json:"mode"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Image              string `json:"image"`
+	Mode               string `json:"mode"`
+	ReservationsCpu    int64  `json:"reservationsCpu"`
+	ReservationsMemory int64  `json:"reservationsMemory"`
+	LimitsCpu          int64  `json:"limitsCpu"`
+	LimitsMemory       int64  `json:"limitsMemory"`
 }
 
 type taskViewModel struct {
@@ -115,6 +120,7 @@ func getNodesInfo(ctx context.Context, cli *client.Client) ([]nodeViewModel, err
 			Name:                 node.Spec.Name,
 			Role:                 string(node.Spec.Role),
 			PlatformArchitecture: node.Description.Platform.Architecture,
+			CpuCores:             node.Description.Resources.NanoCPUs / 1e9,
 			MemoryBytes:          node.Description.Resources.MemoryBytes,
 			Availability:         string(node.Spec.Availability),
 			Status:               string(node.Status.State),
@@ -166,10 +172,14 @@ func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewMode
 		}
 
 		serviceViewModels = append(serviceViewModels, serviceViewModel{
-			ID:    service.ID,
-			Name:  service.Spec.Name,
-			Image: service.Spec.TaskTemplate.ContainerSpec.Image,
-			Mode:  mode,
+			ID:                 service.ID,
+			Name:               service.Spec.Name,
+			Image:              service.Spec.TaskTemplate.ContainerSpec.Image,
+			Mode:               mode,
+			ReservationsCpu:    service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1e9,
+			ReservationsMemory: service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
+			LimitsCpu:          service.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1e9,
+			LimitsMemory:       service.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
 		})
 	}
 	return serviceViewModels, nil
