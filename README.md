@@ -95,7 +95,7 @@ docker compose -f deployment/docker-compose.yml up --build
 Stop dummy services:
 
 ```sh
- docker service rm nginx redis redis2 redis3 redis4 redis5
+ docker service rm nginx redis redis2 redis3
  docker network rm test
  ```
 
