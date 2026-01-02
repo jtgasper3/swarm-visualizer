@@ -33,11 +33,15 @@ export default {
               <v-list-item class="pa-0" min-height="12">
                 <template #title><span class="text-body-2">Task id: <span :title="task.id">{{ task.id }}</span></span></template>
               </v-list-item>
+              <v-list-item class="pa-0" min-height="12" v-if="task.service.mode === 'replicated'">
+                <template #title><span class="text-body-2">Slot: {{ task.slot }} of {{ service.replicas }}</span></template>
+              </v-list-item>
+
               <v-list-item class="pa-0" min-height="12">
                 <template #title><span class="text-body-2">Reservations and Limits</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">CPU: {{ task.service.reservationsCpu }} / {{task.service.limitsCpu }} <br/></span></template>
+                <template #title><span class="text-body-2">CPU: {{ task.service.reservationsCpu }} / {{task.service.limitsCpu }}</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
                 <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.reservationsMemory) }} / {{ formatBytes(task.service.limitsMemory) }}</span></template>
@@ -66,6 +70,7 @@ export default {
   },
   props: {
     task: Object,
+    service: Object,
   },
   methods: {
     taskStatus(status) {

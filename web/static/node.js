@@ -23,7 +23,7 @@ export default {
       </v-card-text>
 
       <v-card-text class="mt-n4">
-        <Task v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :task="task" />
+        <Task v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :task="task" :service="task.service" />
       </v-card-text>
     </v-card>
     `,

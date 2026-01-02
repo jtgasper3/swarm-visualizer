@@ -27,14 +27,15 @@ type nodeViewModel struct {
 }
 
 type serviceViewModel struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Image              string `json:"image"`
-	Mode               string `json:"mode"`
-	ReservationsCpu    int64  `json:"reservationsCpu"`
-	ReservationsMemory int64  `json:"reservationsMemory"`
-	LimitsCpu          int64  `json:"limitsCpu"`
-	LimitsMemory       int64  `json:"limitsMemory"`
+	ID                 string  `json:"id"`
+	Name               string  `json:"name"`
+	Image              string  `json:"image"`
+	Mode               string  `json:"mode"`
+	Replicas           *uint64 `json:"replicas"`
+	ReservationsCpu    int64   `json:"reservationsCpu"`
+	ReservationsMemory int64   `json:"reservationsMemory"`
+	LimitsCpu          int64   `json:"limitsCpu"`
+	LimitsMemory       int64   `json:"limitsMemory"`
 }
 
 type taskViewModel struct {
@@ -45,6 +46,7 @@ type taskViewModel struct {
 	ContainerID  string    `json:"containerId"`
 	DesiredState string    `json:"desiredState"`
 	State        string    `json:"state"`
+	Slot         int       `json:"slot"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
@@ -149,6 +151,7 @@ func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Ar
 			ContainerID:  containerId,
 			DesiredState: string(task.DesiredState),
 			State:        string(task.Status.State),
+			Slot:         task.Slot,
 			CreatedAt:    task.CreatedAt,
 		})
 	}
@@ -171,11 +174,18 @@ func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewMode
 			mode = "global"
 		}
 
+		var replicas *uint64
+		if service.Spec.Mode.Replicated != nil && service.Spec.Mode.Replicated.Replicas != nil {
+			r := *service.Spec.Mode.Replicated.Replicas
+			replicas = &r
+		}
+
 		serviceViewModels = append(serviceViewModels, serviceViewModel{
 			ID:                 service.ID,
 			Name:               service.Spec.Name,
 			Image:              service.Spec.TaskTemplate.ContainerSpec.Image,
 			Mode:               mode,
+			Replicas:           replicas,
 			ReservationsCpu:    service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1e9,
 			ReservationsMemory: service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
 			LimitsCpu:          service.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1e9,

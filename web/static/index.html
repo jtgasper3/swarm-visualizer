@@ -117,7 +117,7 @@
             <v-list-subheader class="font-weight-bold">SERVICES
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectServices('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
                 @click="selectServices('none')">none</v-btn>)</v-list-subheader>
-            <v-list-item v-for="service in sortedServices" :key="service.id" :title="service.name" :value="service.id" density="compact">
+            <v-list-item v-for="service in sortedServices" :key="service.id" :title="createServiceName(service)" :value="service.id" density="compact">
               <template v-slot:prepend="{ isSelected, select }">
                 <v-list-item-action start>
                   <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
@@ -248,6 +248,13 @@
           })
         );
 
+        function createServiceName(service) {
+          if (service.mode === 'replicated' && service.replicas !== undefined && service.replicas > 1) {
+            return `${service.name} (${service.replicas} replicas)`;
+          }
+          return service.name;
+        } 
+
         function getAuthorized() {
           window.location.href = window.location.pathname + 'login';
         }
@@ -306,6 +313,7 @@
           filteredNodes,
           sortedNodes,
           sortedServices,
+          createServiceName,
           getAuthorized,
           selectNodes,
           selectServices,
