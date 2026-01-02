@@ -1,12 +1,12 @@
 // https://htmlcolorcodes.com/color-chart/
-const taskColors = [ '#039be5', '#3949ab', '#8e24aa', '#e53935', '#fb8c00', '#fdd835', '#7cb342', '#00897b', '#00acc1', '#6d4c41', ];
+const taskColors = [ '#039be5', '#3949ab', '#FF80F2', '#e53935', '#fb8c00', '#8e24aa', '#fdd835', '#80FF8D', '#00897b', '#00acc1', '#6d4c41', '#80B3FF', '#CC80FF', '#7cb342',];
 
 import { formatBytes } from './utils.js';
 
 export default {
   template: `
     <v-card
-      :style="'border-color: ' + calcColor(task.service.index) + '; border-width: 4px'"
+      :style="calcStyle(task.service.index)"
       flat
       rounded="lg"
       class="d-flex flex-column mb-2"
@@ -96,8 +96,30 @@ export default {
         default: return 'error'; break
       }
     },
-    calcColor(index) {
-      return taskColors[index % taskColors.length]
+    calcStyle(index) {
+
+      //Switch style based on index 
+      let style
+
+      switch (Math.trunc(index / taskColors.length)) {
+        case 0:
+          style = "solid"
+          break
+        case 1:
+          style = "dashed"
+          break
+        case 2:
+          style = "dotted"
+          break
+        default:
+          style = "double"
+      }
+
+      return {
+        'border-color': taskColors[index % taskColors.length],
+        'border-style': style,
+        'border-width': '4px'
+      }
     }
   }
 }
