@@ -76,9 +76,10 @@ docker swarm init
 ### Spin up some services
 
 ```
+docker network create --driver overlay test
 docker service create --name nginx --replicas=3 nginx:latest
 docker service create --name redis --reserve-memory 4mib --reserve-cpu 1 redis:latest
-docker service create --name redis2 redis:latest
+docker service create --name redis2 --network test redis:latest
 docker service create --name redis3 --mode global redis:latest
 ```
 
@@ -95,6 +96,7 @@ Stop dummy services:
 
 ```sh
  docker service rm nginx redis redis2 redis3 redis4 redis5
+ docker network rm test
  ```
 
 Remove Swarm mode:

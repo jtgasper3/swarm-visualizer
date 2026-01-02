@@ -149,6 +149,26 @@
               </v-list-item>
             </v-list> -->
 
+          <v-list v-model:selected="filters.networksSelection" density="compact" nav slim select-strategy="leaf">
+            <v-list-subheader class="font-weight-bold">NETWORKS
+              (<v-btn size="x-small" slim color="primary" variant="text" @click="selectNetworks('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
+                @click="selectNetworks('none')">none</v-btn>)</v-list-subheader>
+            <v-list-item v-for="network in sortedNetworks" :key="network.id" :title="network.name" :value="network.id" density="compact">
+              <template v-slot:prepend="{ isSelected, select }">
+                <v-list-item-action start>
+                  <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
+                </v-list-item-action>
+              </template>
+            </v-list-item>
+            <v-list-item title="(none)" value="(none)" density="compact">
+              <template v-slot:prepend="{ isSelected, select }">
+                <v-list-item-action start>
+                  <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
+                </v-list-item-action>
+              </template>
+            </v-list-item>
+          </v-list>
+
           <v-list density="comfortable" nav slim>
             <v-list-item>
               <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" density="compact"
@@ -211,8 +231,9 @@
       setup() {
         const clusterName = ref('Loading...');
         const drawer = ref(true);
-        const filters = useStorage('filters.2', {
+        const filters = useStorage('filters.3', {
           filterText: '',
+          networksSelection: new Array(),
           nodesSelection: new Array(),
           servicesSelection: new Array(),
           nodeRoles: false,
@@ -228,9 +249,11 @@
         });
 
         const sort = useStorage('sort', 'Service Name');
-        const services = ref([]);
         const nodes = ref([]);
+        const networks = ref([]);
+        const services = ref([]);
 
+        const sortedNetworks = computed(() => networks.value.sort((a, b) => a.name.localeCompare(b.name)));
         const sortedNodes = computed(() => nodes.value.sort((a, b) => a.hostname.localeCompare(b.hostname)));
         const sortedServices = computed(() => services.value.sort((a, b) => a.name.localeCompare(b.name)));
         const filteredNodes = computed(() => sortedNodes.value
@@ -259,6 +282,16 @@
           window.location.href = window.location.pathname + 'login';
         }
 
+        function selectNetworks(option) {
+          if (option === 'all') {
+            const uniqueItems = networks.value.filter(network => !filters.value.networksSelection.includes(network.id)).map((network => network.id))
+            filters.value.networksSelection.push(...uniqueItems)
+            filters.value.networksSelection.push('(none)')
+          } else {
+            filters.value.networksSelection.length = 0
+          }
+        }
+
         function selectNodes(option) {
           if (option === 'all') {
             const uniqueItems = nodes.value.filter(node => !filters.value.nodesSelection.includes(node.id)).map((node => node.id))
@@ -279,8 +312,14 @@
 
         function updateReceivedData(data) {
           clusterName.value = data.clusterName;
+
+          networks.value = data.networks;
+
           services.value = data.services.map((service) => {
             service.index = data.services.findIndex((serv) => serv.id === service.id);
+            if (service.networks) {
+              service.networks = service.networks.map((network) => data.networks.find((n) => n.id === network.Target));
+            }
             return service;
           })
 
@@ -308,13 +347,16 @@
           drawer,
           filters,
           sort,
-          services,
+          networks,
+          sortedNetworks,
           nodes,
           filteredNodes,
           sortedNodes,
+          services,
           sortedServices,
           createServiceName,
           getAuthorized,
+          selectNetworks,
           selectNodes,
           selectServices,
           updateReceivedData,

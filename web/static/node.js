@@ -62,6 +62,16 @@ export default {
           }
           return this.filters.servicesSelection.includes(task.service.id);
         })
+        .filter(task => {
+          if (this.filters.networks === 'all') {
+            return true;
+          }
+          const networkIds = task.service.networks ? task.service.networks.map(n => n.id) : [];
+          if (networkIds.length === 0 && this.filters.networksSelection.includes('(none)')) {
+            return true;
+          }
+          return this.filters.networksSelection.some(networkId => networkIds.includes(networkId));
+        })
         .sort((a, b) => {
           if (a.service.mode < b.service.mode) return -1;
           if (a.service.mode > b.service.mode) return 1;

@@ -9,15 +9,16 @@ import (
 
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 )
 
 type nodeViewModel struct {
 	ID                   string `json:"id"`
-	Hostname             string `json:"hostname"`
 	Name                 string `json:"name"`
+	Hostname             string `json:"hostname"`
 	Role                 string `json:"role"`
 	PlatformArchitecture string `json:"platformArchitecture"`
 	MemoryBytes          int64  `json:"memoryBytes"`
@@ -27,15 +28,16 @@ type nodeViewModel struct {
 }
 
 type serviceViewModel struct {
-	ID                 string  `json:"id"`
-	Name               string  `json:"name"`
-	Image              string  `json:"image"`
-	Mode               string  `json:"mode"`
-	Replicas           *uint64 `json:"replicas"`
-	ReservationsCpu    int64   `json:"reservationsCpu"`
-	ReservationsMemory int64   `json:"reservationsMemory"`
-	LimitsCpu          int64   `json:"limitsCpu"`
-	LimitsMemory       int64   `json:"limitsMemory"`
+	ID                 string                          `json:"id"`
+	Name               string                          `json:"name"`
+	Image              string                          `json:"image"`
+	Mode               string                          `json:"mode"`
+	Replicas           *uint64                         `json:"replicas"`
+	ReservationsCpu    int64                           `json:"reservationsCpu"`
+	ReservationsMemory int64                           `json:"reservationsMemory"`
+	LimitsCpu          int64                           `json:"limitsCpu"`
+	LimitsMemory       int64                           `json:"limitsMemory"`
+	Networks           []swarm.NetworkAttachmentConfig `json:"networks"`
 }
 
 type taskViewModel struct {
@@ -50,8 +52,14 @@ type taskViewModel struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+type networkViewModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type SwarmData struct {
 	ClusterName string             `json:"clusterName"`
+	Networks    []networkViewModel `json:"networks"`
 	Nodes       []nodeViewModel    `json:"nodes"`
 	Services    []serviceViewModel `json:"services"`
 	Tasks       []taskViewModel    `json:"tasks"`
@@ -79,8 +87,9 @@ func inspectSwarmServices(cfg *config.Config) {
 		nodeViewModels, errNode := getNodesInfo(ctx, cli)
 		taskViewModels, errTask := getTasksInfo(ctx, cli, filterArgs)
 		serviceViewModels, errService := getServicesInfo(ctx, cli)
+		networkViewModels, errNetwork := getNetworksInfo(ctx, cli)
 
-		if errNode != nil || errTask != nil || errService != nil {
+		if errNode != nil || errTask != nil || errService != nil || errNetwork != nil {
 			time.Sleep(sleepDuration)
 			continue
 		}
@@ -89,6 +98,7 @@ func inspectSwarmServices(cfg *config.Config) {
 			ClusterName: cfg.ClusterName,
 			Services:    serviceViewModels,
 			Nodes:       nodeViewModels,
+			Networks:    networkViewModels,
 			Tasks:       taskViewModels,
 		}
 
@@ -107,8 +117,27 @@ func inspectSwarmServices(cfg *config.Config) {
 	}
 }
 
+func getNetworksInfo(ctx context.Context, cli *client.Client) ([]networkViewModel, error) {
+	networks, err := cli.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.KeyValuePair{Key: "scope", Value: "swarm"}, filters.KeyValuePair{Key: "dangling", Value: "false"})})
+	if err != nil {
+		log.Printf("Error fetching networks: %v", err)
+		return nil, err
+	}
+
+	var networkViewModels []networkViewModel
+	for _, network := range networks {
+		if !network.Ingress {
+			networkViewModels = append(networkViewModels, networkViewModel{
+				ID:   network.ID,
+				Name: network.Name,
+			})
+		}
+	}
+	return networkViewModels, nil
+}
+
 func getNodesInfo(ctx context.Context, cli *client.Client) ([]nodeViewModel, error) {
-	nodes, err := cli.NodeList(ctx, types.NodeListOptions{})
+	nodes, err := cli.NodeList(ctx, swarm.NodeListOptions{})
 	if err != nil {
 		log.Printf("Error fetching nodes: %v", err)
 		return nil, err
@@ -132,7 +161,7 @@ func getNodesInfo(ctx context.Context, cli *client.Client) ([]nodeViewModel, err
 }
 
 func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Args) ([]taskViewModel, error) {
-	tasks, err := cli.TaskList(ctx, types.TaskListOptions{Filters: filterArgs})
+	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{Filters: filterArgs})
 	if err != nil {
 		log.Printf("Error fetching tasks: %v", err)
 		return nil, err
@@ -159,7 +188,7 @@ func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Ar
 }
 
 func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewModel, error) {
-	services, err := cli.ServiceList(ctx, types.ServiceListOptions{})
+	services, err := cli.ServiceList(ctx, swarm.ServiceListOptions{})
 	if err != nil {
 		log.Printf("Error fetching services: %v", err)
 		return nil, err
@@ -190,6 +219,7 @@ func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewMode
 			ReservationsMemory: service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes,
 			LimitsCpu:          service.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1e9,
 			LimitsMemory:       service.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
+			Networks:           service.Spec.TaskTemplate.Networks,
 		})
 	}
 	return serviceViewModels, nil

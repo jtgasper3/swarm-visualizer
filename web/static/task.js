@@ -20,7 +20,7 @@ export default {
       </v-card-item>
 
       <v-card-text v-if="task.service" class="mt-n2 pb-0">
-        <v-list density="compact" lines="false" class="pt-0">
+        <v-list density="compact" lines="false" class="pt-0" v-model:opened="opened">
           <v-list-item class="pa-0" min-height="12">
             <template #title><span class="text-body-2">Image: {{ task.service.image.split('@')[0] }}</span></template>
           </v-list-item>
@@ -36,6 +36,22 @@ export default {
               <v-list-item class="pa-0" min-height="12" v-if="task.service.mode === 'replicated'">
                 <template #title><span class="text-body-2">Slot: {{ task.slot }} of {{ service.replicas }}</span></template>
               </v-list-item>
+
+              <div v-if="service.networks && service.networks.length > 0">
+                <v-list-item class="pa-0" min-height="12">
+                  <v-list-group value="networks">
+                    <template v-slot:activator="{ props }">
+                      <v-list-item class="pa-0" min-height="12" v-bind="props">
+                        <template #title><span class="text-body-2">Networks</span></template>
+                      </v-list-item>
+                    </template>              
+                  
+                    <v-list-item v-for="network in service.networks" :key="network.id" min-height="12" class="pa-0">
+                      <template #title><i class="mdi mdi-circle-small"></i><span class="text-body-2">{{ network.name }}</span></template>
+                    </v-list-item>
+                  </v-list-group>
+                </v-list-item>
+              </div>
 
               <v-list-item class="pa-0" min-height="12">
                 <template #title><span class="text-body-2">Reservations and Limits</span></template>
@@ -65,6 +81,7 @@ export default {
   data() {
     return {
       open: false,
+      opened: ['networks'],
       formatBytes: formatBytes, // make the utility function available in the template
     }
   },
