@@ -2,6 +2,9 @@ name: Image Build
 
 on:
   push:
+    paths-ignore:
+      - README.md
+      - LICENSE
 
 env:
   IMAGE_NAME: jtgasper3/swarm-visualizer
