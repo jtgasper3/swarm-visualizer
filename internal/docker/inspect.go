@@ -118,7 +118,7 @@ func inspectSwarmServices(cfg *config.Config) {
 }
 
 func getNetworksInfo(ctx context.Context, cli *client.Client) ([]networkViewModel, error) {
-	networks, err := cli.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.KeyValuePair{Key: "scope", Value: "swarm"}, filters.KeyValuePair{Key: "dangling", Value: "false"})})
+	networks, err := cli.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.KeyValuePair{Key: "scope", Value: "swarm"})})
 	if err != nil {
 		log.Printf("Error fetching networks: %v", err)
 		return nil, err
