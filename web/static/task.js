@@ -15,14 +15,14 @@ export default {
         <v-card-title v-if="task.service" class="text-subtitle-1 font-weight-bold">
           <v-badge :color="taskStatus(task.state)" dot inline floating :title="task.state"></v-badge>
           <span :title="task.service.name">{{ task.service.name }}</span>
-          <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ task.service.mode }}</v-chip>
         </v-card-title>
+        <v-card-subtitle class="pa-0"><v-chip color="primary" class="ml-1 pa-1" label size="x-medium" density="compact" slim>{{ task.service.mode }}</v-chip></v-card-subtitle>
       </v-card-item>
 
-      <v-card-text v-if="task.service" class="mt-n2 pb-0">
+      <v-card-text v-if="task.service" class="mt-n2 pa-1 pb-0">
         <v-list density="compact" lines="false" class="pt-0" v-model:opened="opened">
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Image: {{ task.service.image.split('@')[0] }}</span></template>
+            <template #title><span class="text-body-2">Image: <span :title="task.service.image.split('@')[0]">{{ task.service.image.split('@')[0] }}</span></span></template>
           </v-list-item>
           <v-list-item class="pa-0" min-height="12">
             <template #title><span class="text-body-2">Container id: <span :title="task.containerId.substring(0, 12)">{{ task.containerId.substring(0, 12) }}</span></span></template>

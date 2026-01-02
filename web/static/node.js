@@ -23,7 +23,11 @@ export default {
       </v-card-text>
 
       <v-card-text class="mt-n4">
-        <Task v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :task="task" :service="task.service" />
+        <v-list :aria-label="'Services on ' + node.hostname" class="pa-0">
+          <v-list-item v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :aria-label="task.service.name" class="pa-0">
+            <Task :task="task" :service="task.service" />
+          </v-list-item>
+        </v-list>
       </v-card-text>
     </v-card>
     `,

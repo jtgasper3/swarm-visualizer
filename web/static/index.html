@@ -12,20 +12,6 @@
     .server-card {
       flex: 1 1 240px;
     }
-
-    .trailing-overflow {
-      direction: rtl;
-      text-align: left;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: inline-block;
-    }
-
-    .trailing-overflow-container {
-      display: inline-block;
-      width: 100%;
-      white-space: nowrap;
-    }
   </style>
   
   <script type="importmap">
@@ -44,12 +30,12 @@
   <div id="app">
     <v-app>
       <v-app-bar class="ps-4" flat>
-        <v-app-bar-nav-icon v-if="$vuetify.display.lgAndDown" @click="drawer = !drawer"></v-app-bar-nav-icon>
+        <v-app-bar-nav-icon v-if="$vuetify.display.lgAndDown" @click="drawer = !drawer" title="Toggle sorting and filtering pane"></v-app-bar-nav-icon>
 
         <v-app-bar-title>
           <WebSocket @update="updateReceivedData" @not-authorized="getAuthorized()">
             <template #icon="{ state }">
-              <v-badge :color="state === 'connected' ? 'success' : 'error'" dot inline floating :title="state"></v-badge>
+              <v-badge :color="state === 'connected' ? 'success' : 'error'" dot inline floating :title="state" :aria-label="'Connection: ' + state"></v-badge>
             </template>
           </WebSocket>
           {{ clusterName }}
@@ -81,10 +67,10 @@
           </template>
       </v-app-bar>
 
-      <v-navigation-drawer v-model="drawer" color="surface-light" width="280">
+      <v-navigation-drawer v-model="drawer" color="surface-light" width="280" aria-label="Filter and Sorting">
         <div class="px-2">
-          <v-list v-model:selected="filters.nodesSelection" density="comfortable" nav slim select-strategy="leaf">
-            <span class="font-weight-bold">FILTER</span>
+          <v-list v-model:selected="filters.nodesSelection" density="comfortable" nav slim select-strategy="leaf" aria-labelledby="filtering">
+            <span id="filtering" class="font-weight-bold">FILTER</span>
             
             <v-list-subheader class="font-weight-bold">NODES
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectNodes('all')">all</v-btn>/<v-btn size="x-small" slim color="primary" variant="text"
@@ -98,8 +84,8 @@
             </v-list-item>
           </v-list>
 
-          <v-list density="comfortable" nav slim>
-            <v-list-subheader class="font-weight-bold">ROLE</v-list-subheader>
+          <v-list density="comfortable" nav slim aria-labelledby="roles">
+            <v-list-subheader id="roles" class="font-weight-bold">ROLE</v-list-subheader>
             <v-btn-toggle
               v-model="filters.nodeRoles"
               color="primary"
@@ -113,8 +99,8 @@
             </v-btn-toggle>
           </v-list>
 
-          <v-list v-model:selected="filters.servicesSelection" density="comfortable" nav slim select-strategy="leaf">
-            <v-list-subheader class="font-weight-bold">SERVICES
+          <v-list v-model:selected="filters.servicesSelection" density="comfortable" nav slim select-strategy="leaf" aria-labelledby="services">
+            <v-list-subheader class="font-weight-bold"><span id="services">SERVICES</span>
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectServices('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
                 @click="selectServices('none')">none</v-btn>)</v-list-subheader>
             <v-list-item v-for="service in sortedServices" :key="service.id" :title="createServiceName(service)" :value="service.id" density="compact">
@@ -126,8 +112,8 @@
             </v-list-item>
           </v-list>
 
-          <v-list density="comfortable" nav slim>
-            <v-list-subheader class="font-weight-bold">MODE</v-list-subheader>
+          <v-list density="comfortable" nav slim aria-labelledby="modes">
+            <v-list-subheader id="modes" class="font-weight-bold">MODE</v-list-subheader>
               <v-btn-toggle
                 v-model="filters.serviceMode"
                 color="primary"
@@ -149,8 +135,8 @@
               </v-list-item>
             </v-list> -->
 
-          <v-list v-model:selected="filters.networksSelection" density="compact" nav slim select-strategy="leaf">
-            <v-list-subheader class="font-weight-bold">NETWORKS
+          <v-list v-model:selected="filters.networksSelection" density="compact" nav slim select-strategy="leaf" aria-labelledby="networks">
+            <v-list-subheader class="font-weight-bold"><span id="networks">NETWORKS</span>
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectNetworks('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
                 @click="selectNetworks('none')">none</v-btn>)</v-list-subheader>
             <v-list-item v-for="network in sortedNetworks" :key="network.id" :title="network.name" :value="network.id" density="compact">
@@ -169,9 +155,9 @@
             </v-list-item>
           </v-list>
 
-          <v-list density="comfortable" nav slim>
+          <v-list density="comfortable" nav slim aria-labelledby="search">
             <v-list-item>
-              <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" density="compact"
+              <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" density="compact" id="search"
                 hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify" rounded="lg" variant="outlined">
                 <v-divider class="me-2 align-self-center" length="20" vertical />
 
@@ -182,8 +168,8 @@
             </v-list-item>
           </v-list>
           
-          <v-list density="comfortable" nav slim>
-            <span class="font-weight-bold">SORT</span>
+          <v-list density="comfortable" nav slim aria-labelledby="sorting">
+            <span id="sorting" class="font-weight-bold">SORT</span>
 
             <v-list-item>
               <v-select density="compact" flat hide-details color="primary" bg-color="surface"  :items="['Service Name', 'Created']" label="Country"
@@ -196,17 +182,21 @@
           <v-divider />
         </template>
       </v-navigation-drawer>
-      <v-main>
+      <v-main aria-label="Nodes and Services List">
         <v-container fluid>
           <v-row class="d-flex flex-wrap ga-4">
-            <v-col v-for="node in filteredNodes"
-              :key="node.id"
-              class="server-card"
-              style="max-width: 19rem"
-              cols="auto"
-            >
-              <Node :node="node" :filters="filters" :sort="sort" />
-            </v-col>
+            <v-list aria-label="Swarm Nodes" class="pa-0">
+              <v-col v-for="node in filteredNodes"
+                :key="node.id"
+                class="server-card pa-1"
+                style="max-width: 19rem"
+                cols="auto"
+              >
+                <v-list-item :aria-label="node.hostname" class="pa-0">
+                  <Node :node="node" :filters="filters" :sort="sort" />
+                </v-list-item>
+              </v-col>
+            </v-list>
           </v-row>
         </v-container>
       </v-main>
