@@ -10,7 +10,7 @@ export default {
           <span :title="node.hostname">{{ node.hostname }}</span>
           <span v-if="node.availability !== 'active'">({{ node.availability }})</span>
         </v-card-title>
-        <v-card-subtitle>id: {{ node.id }}</v-card-subtitle>
+        <v-card-subtitle>Node id: {{ node.id }}</v-card-subtitle>
       </v-card-item>
       
       <v-card-text class="mt-n2">
