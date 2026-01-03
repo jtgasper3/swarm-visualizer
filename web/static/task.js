@@ -103,7 +103,7 @@ export default {
       return {
         'border-color': taskColors[index % taskColors.length],
         'border-style': style,
-        'border-width': '4px'
+        'border-width': '3px'
       }
     }
   }
