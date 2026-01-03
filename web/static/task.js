@@ -54,7 +54,7 @@ export default {
                 <template #title><span class="text-body-2">Reservations and Limits</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">CPU: {{ task.service.reservationsCpu }} / {{task.service.limitsCpu }}</span></template>
+                <template #title><span class="text-body-2">CPU Cores: {{ task.service.reservationsCpu }} / {{task.service.limitsCpu }}</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
                 <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.reservationsMemory) }} / {{ formatBytes(task.service.limitsMemory) }}</span></template>

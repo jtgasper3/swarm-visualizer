@@ -18,8 +18,38 @@ export default {
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.platformArchitecture
           }}</v-chip>
         <v-spacer />
-        CPU Cores: {{ node.cpuCores }}<br/>
-        Memory: {{ formatBytes(node.memoryBytes) }}
+
+        <v-table id="server" density="compact" title="Node Resources" aria-label="Node Resources">
+          <thead>
+            <tr>
+              <th class="text-left">
+              </th>
+              <th class="text-left">
+                Physical
+              </th>
+              <th class="text-left">
+                Reserved
+              </th>
+              <th class="text-left">
+                Limited
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>Cores</th>
+              <td>{{ node.cpuCores }}</td>
+              <td>{{ combinedServiceStats.reservedCpu }}</td>
+              <td>{{ combinedServiceStats.limitedCpu }}</td>
+            </tr>
+            <tr>
+              <th>Memory</th>
+              <td>{{ formatBytes(node.memoryBytes) }}</td>
+              <td>{{ formatBytes(combinedServiceStats.reservedMemory) }}</td>
+              <td>{{ formatBytes(combinedServiceStats.limitedMemory) }}</td>
+            </tr>
+          </tbody>
+        </v-table>
       </v-card-text>
 
       <v-card-text class="mt-n4">
@@ -43,6 +73,26 @@ export default {
     node: Object,
     filters: Object,
     sort: String,
+  },
+  computed: {
+    combinedServiceStats() {
+      return this.node.tasks.reduce((accumulator, task) => {
+        const service = task.service;
+        if (service.reservationsCpu) {
+          accumulator.reservedCpu += service.reservationsCpu;
+        }
+        if (service.reservationsMemory) {
+          accumulator.reservedMemory += service.reservationsMemory;
+        }
+        if (service.limitsCpu) {
+          accumulator.limitedCpu += service.limitsCpu;
+        }
+        if (service.limitsMemory) {
+          accumulator.limitedMemory += service.limitsMemory;
+        }
+        return accumulator;
+      }, { reservedCpu: 0, reservedMemory: 0, limitedCpu: 0, limitedMemory: 0 });
+    }
   },
   methods: {
     sortedAndFilteredServices(tasks) {
@@ -85,8 +135,7 @@ export default {
             return a.createdAt.localeCompare(b.createdAt);
           }
           return a.service.name.localeCompare(b.service.name);
-        }
-        );
+        });
     },
     nodeStatus(status) {
       switch (status) {
