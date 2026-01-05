@@ -131,7 +131,11 @@ func getServicesInfo(ctx context.Context, cli *client.Client, cfg *config.Config
 }
 
 func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Task, error) {
-	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{})
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("desired-state", "running")
+	filterArgs.Add("desired-state", "accepted")
+
+	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{Filters: filterArgs})
 	if err != nil {
 		log.Printf("Error fetching tasks: %v", err)
 		return nil, err
