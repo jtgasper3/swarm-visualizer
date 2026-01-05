@@ -81,7 +81,7 @@
             <v-list-subheader class="font-weight-bold">NODES
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectNodes('all')">all</v-btn>/<v-btn size="x-small" slim color="primary" variant="text"
                 @click="selectNodes('none')">none</v-btn>)</v-list-subheader>
-            <v-list-item v-for="node in sortedNodes" :key="node.id" :title="node.hostname" :value="node.id" density="compact">
+            <v-list-item v-for="node in sortedNodes" :key="node.ID" :title="node.Description.Hostname" :value="node.ID" density="compact">
               <template v-slot:prepend="{ isSelected, select }">
                 <v-list-item-action start>
                   <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" color="primary" hide-details></v-checkbox-btn>
@@ -109,7 +109,7 @@
             <v-list-subheader class="font-weight-bold"><span id="services">SERVICES</span>
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectServices('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
                 @click="selectServices('none')">none</v-btn>)</v-list-subheader>
-            <v-list-item v-for="service in sortedServices" :key="service.id" :title="createServiceName(service)" :value="service.id" density="compact">
+            <v-list-item v-for="service in sortedServices" :key="service.ID" :title="createServiceName(service)" :value="service.ID" density="compact">
               <template v-slot:prepend="{ isSelected, select }">
                 <v-list-item-action start>
                   <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
@@ -145,7 +145,7 @@
             <v-list-subheader class="font-weight-bold"><span id="networks">NETWORKS</span>
               (<v-btn size="x-small" slim color="primary" variant="text" @click="selectNetworks('all')">all</v-btn>/<v-btn size="x-small" color="primary" variant="text" slim 
                 @click="selectNetworks('none')">none</v-btn>)</v-list-subheader>
-            <v-list-item v-for="network in sortedNetworks" :key="network.id" :title="network.name" :value="network.id" density="compact">
+            <v-list-item v-for="network in sortedNetworks" :key="network.Id" :title="network.Name" :value="network.Id" density="compact">
               <template v-slot:prepend="{ isSelected, select }">
                 <v-list-item-action start>
                   <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
@@ -193,12 +193,12 @@
           <v-list aria-label="Swarm Nodes" class="pa-0">
             <v-row class="d-flex flex-wrap ga-4">
               <v-col v-for="node in filteredNodes"
-                :key="node.id"
+                :key="node.ID"
                 class="server-card pa-1"
                 style="max-width: 19rem"
                 cols="auto"
               >
-                <v-list-item :aria-label="node.hostname" class="pa-0">
+                <v-list-item :aria-label="node.Description.Hostname" class="pa-0">
                   <Node :node="node" :filters="filters" :sort="sort" />
                 </v-list-item>
               </v-col>
@@ -249,29 +249,29 @@
         const networks = ref([]);
         const services = ref([]);
 
-        const sortedNetworks = computed(() => networks.value.sort((a, b) => a.name.localeCompare(b.name)));
-        const sortedNodes = computed(() => nodes.value.sort((a, b) => a.hostname.localeCompare(b.hostname)));
-        const sortedServices = computed(() => services.value.sort((a, b) => a.name.localeCompare(b.name)));
+        const sortedNetworks = computed(() => networks.value.sort((a, b) => a.Name.localeCompare(b.Name)));
+        const sortedNodes = computed(() => nodes.value.sort((a, b) => a.Description.Hostname.localeCompare(b.Description.Hostname)));
+        const sortedServices = computed(() => services.value.sort((a, b) => a.Spec.Name.localeCompare(b.Spec.Name)));
         const filteredNodes = computed(() => sortedNodes.value
           .filter(node => {
             if (!filters.value.nodeRoles) {
               return true;
             }
-            return node.role === filters.value.nodeRoles;
+            return node.Spec.Role === filters.value.nodeRoles;
           })
           .filter(node => {
             if (filters.node === 'all') {
               return true;
             }
-            return filters.value.nodesSelection.includes(node.id);
+            return filters.value.nodesSelection.includes(node.ID);
           })
         );
 
         function createServiceName(service) {
-          if (service.mode === 'replicated' && service.replicas !== undefined && service.replicas > 1) {
-            return `${service.name} (${service.replicas} replicas)`;
+          if (service.Spec.Mode.Replicated !== undefined  && service.Spec.Mode.Replicated.Replicas !== undefined && service.Spec.Mode.Replicated.Replicas > 1) {
+            return `${service.Spec.Name} (${service.Spec.Mode.Replicated.Replicas} replicas)`;
           }
-          return service.name;
+          return service.Spec.Name;
         } 
 
         function getAuthorized() {
@@ -280,7 +280,7 @@
 
         function selectNetworks(option) {
           if (option === 'all') {
-            const uniqueItems = networks.value.filter(network => !filters.value.networksSelection.includes(network.id)).map((network => network.id))
+            const uniqueItems = networks.value.filter(network => !filters.value.networksSelection.includes(network.Id)).map((network => network.Id))
             filters.value.networksSelection.push(...uniqueItems)
             filters.value.networksSelection.push('(none)')
           } else {
@@ -290,7 +290,7 @@
 
         function selectNodes(option) {
           if (option === 'all') {
-            const uniqueItems = nodes.value.filter(node => !filters.value.nodesSelection.includes(node.id)).map((node => node.id))
+            const uniqueItems = nodes.value.filter(node => !filters.value.nodesSelection.includes(node.ID)).map((node => node.ID))
             filters.value.nodesSelection.push(...uniqueItems)
           } else {
             filters.value.nodesSelection.length = 0
@@ -299,7 +299,7 @@
         
         function selectServices(option) {
           if (option === 'all') {
-            const uniqueItems = services.value.filter(service => !filters.value.servicesSelection.includes(service.id)).map((service => service.id))
+            const uniqueItems = services.value.filter(service => !filters.value.servicesSelection.includes(service.ID)).map((service => service.ID))
             filters.value.servicesSelection.push(...uniqueItems)
           } else {
             filters.value.servicesSelection.length = 0
@@ -312,9 +312,9 @@
           networks.value = data.networks;
 
           services.value = data.services.map((service) => {
-            service.index = data.services.findIndex((serv) => serv.id === service.id);
-            if (service.networks) {
-              service.networks = service.networks.map((network) => data.networks.find((n) => n.id === network.Target));
+            service.index = data.services.findIndex((serv) => serv.ID === service.ID);
+            if (service.Spec.TaskTemplate.Networks) {
+              service.networks = service.Spec.TaskTemplate.Networks.map((network) => data.networks.find((n) => n.Id === network.Target));
             }
             return service;
           })
@@ -322,9 +322,9 @@
           nodes.value = data.nodes.map((node) => {
             if (data.tasks) {
               node.tasks = data.tasks
-                .filter(task => task.nodeId === node.id)
+                .filter(task => task.NodeID === node.ID)
                 .map((task) => {
-                  task.service = services.value.find((service) => task.serviceId === service.id);
+                  task.service = services.value.find((service) => task.ServiceID === service.ID);
                   return task;
                 });
             }

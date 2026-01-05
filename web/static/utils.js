@@ -1,4 +1,4 @@
-export function formatBytes(bytes) {
+export function formatBytes(bytes = 0) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let unitIndex = 0;
 

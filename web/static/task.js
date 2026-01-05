@@ -10,28 +10,28 @@ export default {
     >
       <v-card-item density="compact" class="pa-1">
         <v-card-title v-if="task.service" class="text-subtitle-1 font-weight-bold">
-          <v-badge :color="taskStatus(task.state)" dot inline floating :title="task.state"></v-badge>
-          <span :title="task.service.name">{{ task.service.name }}</span>
+          <v-badge :color="taskStatus(task.Status.State)" dot inline floating :title="task.Status.State"></v-badge>
+          <span :title="task.service.Spec.Name">{{ task.service.Spec.Name }}</span>
         </v-card-title>
-        <v-card-subtitle class="pa-0"><v-chip color="primary" class="ml-1 pa-1" label size="x-medium" density="compact" slim>{{ task.service.mode }}</v-chip></v-card-subtitle>
+        <v-card-subtitle class="pa-0"><v-chip color="primary" class="ml-1 pa-1" label size="x-medium" density="compact" slim>{{ mode }}</v-chip></v-card-subtitle>
       </v-card-item>
 
       <v-card-text v-if="task.service" class="mt-n2 pa-1 pb-0">
         <v-list density="compact" lines="false" class="pt-0" v-model:opened="opened">
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Image: <span :title="task.service.image.split('@')[0]">{{ task.service.image.split('@')[0] }}</span></span></template>
+            <template #title><span class="text-body-2">Image: <span :title="task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0]">{{ task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0] }}</span></span></template>
           </v-list-item>
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Container id: <span :title="task.containerId.substring(0, 12)">{{ task.containerId.substring(0, 12) }}</span></span></template>
+            <template #title><span class="text-body-2">Container id: <span :title="task.Status.ContainerStatus.ContainerID.substring(0, 12)">{{ task.Status.ContainerStatus.ContainerID.substring(0, 12) }}</span></span></template>
           </v-list-item>
 
           <v-expand-transition>
             <div v-if="open">
               <v-list-item class="pa-0" min-height="12">
-                <template #title><span class="text-body-2">Task id: <span :title="task.id">{{ task.id }}</span></span></template>
+                <template #title><span class="text-body-2">Task id: <span :title="task.ID">{{ task.ID }}</span></span></template>
               </v-list-item>
-              <v-list-item class="pa-0" min-height="12" v-if="task.service.mode === 'replicated'">
-                <template #title><span class="text-body-2">Slot: {{ task.slot }} of {{ service.replicas }}</span></template>
+              <v-list-item class="pa-0" min-height="12" v-if="mode === 'replicated'">
+                <template #title><span class="text-body-2">Slot: {{ task.Slot }} of {{ service.Spec.Mode.Replicated.Replicas }}</span></template>
               </v-list-item>
 
               <div v-if="service.networks && service.networks.length > 0">
@@ -43,8 +43,8 @@ export default {
                       </v-list-item>
                     </template>              
                   
-                    <v-list-item v-for="network in service.networks" :key="network.id" min-height="12" class="pa-0">
-                      <template #title><i class="mdi mdi-circle-small"></i><span class="text-body-2">{{ network.name }}</span></template>
+                    <v-list-item v-for="network in service.networks" :key="network.Id" min-height="12" class="pa-0">
+                      <template #title><i class="mdi mdi-circle-small"></i><span class="text-body-2">{{ network.Name }}</span></template>
                     </v-list-item>
                   </v-list-group>
                 </v-list-item>
@@ -54,15 +54,15 @@ export default {
                 <template #title><span class="text-body-2">Reservations and Limits</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">CPU Cores: {{ task.service.reservationsCpu }} / {{task.service.limitsCpu }}</span></template>
+                <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources.Limits.NanoCPUs ?? 0) / 1e9 }}</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.reservationsMemory) }} / {{ formatBytes(task.service.limitsMemory) }}</span></template>
+                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes) }} / {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Limits.MemoryBytes) }}</span></template>
               </v-list-item>
             </div>
           </v-expand-transition>
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Created: {{ this.$vuetify.date.format(task.createdAt, 'keyboardDateTime12h') }}</span></template>
+            <template #title><span class="text-body-2">Created: {{ this.$vuetify.date.format(task.CreatedAt, 'keyboardDateTime12h') }}</span></template>
           </v-list-item>
         </v-list>
       </v-card-text>
@@ -85,6 +85,17 @@ export default {
   props: {
     task: Object,
     service: Object,
+  },
+  computed: {
+    mode() {
+      if (this.service.Spec.Mode.Replicated) {
+        return 'replicated';
+      } else if (this.service.Spec.Mode.Global) {
+        return 'global';
+      } else {
+        return 'unknown';
+      }
+    }
   },
   methods: {
     taskStatus(status) {

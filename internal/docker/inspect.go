@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"log"
 	"reflect"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/jtgasper3/swarm-visualizer/internal"
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 
 	"github.com/docker/docker/api/types/filters"
@@ -15,54 +18,12 @@ import (
 	"github.com/docker/docker/client"
 )
 
-type nodeViewModel struct {
-	ID                   string `json:"id"`
-	Name                 string `json:"name"`
-	Hostname             string `json:"hostname"`
-	Role                 string `json:"role"`
-	PlatformArchitecture string `json:"platformArchitecture"`
-	MemoryBytes          int64  `json:"memoryBytes"`
-	CpuCores             int64  `json:"cpuCores"`
-	Availability         string `json:"availability"`
-	Status               string `json:"status"`
-}
-
-type serviceViewModel struct {
-	ID                 string                          `json:"id"`
-	Name               string                          `json:"name"`
-	Image              string                          `json:"image"`
-	Mode               string                          `json:"mode"`
-	Replicas           *uint64                         `json:"replicas"`
-	ReservationsCpu    int64                           `json:"reservationsCpu"`
-	ReservationsMemory int64                           `json:"reservationsMemory"`
-	LimitsCpu          int64                           `json:"limitsCpu"`
-	LimitsMemory       int64                           `json:"limitsMemory"`
-	Networks           []swarm.NetworkAttachmentConfig `json:"networks"`
-}
-
-type taskViewModel struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	NodeID       string    `json:"nodeId"`
-	ServiceID    string    `json:"serviceId"`
-	ContainerID  string    `json:"containerId"`
-	DesiredState string    `json:"desiredState"`
-	State        string    `json:"state"`
-	Slot         int       `json:"slot"`
-	CreatedAt    time.Time `json:"createdAt"`
-}
-
-type networkViewModel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
 type SwarmData struct {
-	ClusterName string             `json:"clusterName"`
-	Networks    []networkViewModel `json:"networks"`
-	Nodes       []nodeViewModel    `json:"nodes"`
-	Services    []serviceViewModel `json:"services"`
-	Tasks       []taskViewModel    `json:"tasks"`
+	ClusterName string            `json:"clusterName"`
+	Networks    []network.Summary `json:"networks"`
+	Nodes       []swarm.Node      `json:"nodes"`
+	Services    []swarm.Service   `json:"services"`
+	Tasks       []swarm.Task      `json:"tasks"`
 }
 
 var (
@@ -73,9 +34,6 @@ var (
 func inspectSwarmServices(cfg *config.Config) {
 	sleepDuration := 1 * time.Second
 
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("desired-state", "running")
-
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatal("Docker client error:", err)
@@ -84,10 +42,10 @@ func inspectSwarmServices(cfg *config.Config) {
 	for {
 		ctx := context.Background()
 
-		nodeViewModels, errNode := getNodesInfo(ctx, cli)
-		taskViewModels, errTask := getTasksInfo(ctx, cli, filterArgs)
-		serviceViewModels, errService := getServicesInfo(ctx, cli)
-		networkViewModels, errNetwork := getNetworksInfo(ctx, cli)
+		nodes, errNode := getNodesInfo(ctx, cli, cfg)
+		tasks, errTask := getTasksInfo(ctx, cli, cfg)
+		services, errService := getServicesInfo(ctx, cli, cfg)
+		networks, errNetwork := getNetworksInfo(ctx, cli, cfg)
 
 		if errNode != nil || errTask != nil || errService != nil || errNetwork != nil {
 			time.Sleep(sleepDuration)
@@ -96,10 +54,17 @@ func inspectSwarmServices(cfg *config.Config) {
 
 		data := SwarmData{
 			ClusterName: cfg.ClusterName,
-			Services:    serviceViewModels,
-			Nodes:       nodeViewModels,
-			Networks:    networkViewModels,
-			Tasks:       taskViewModels,
+			Services:    services,
+			Nodes:       nodes,
+			Networks:    networks,
+			Tasks:       tasks,
+		}
+
+		for _, item := range cfg.SensitiveDataPaths {
+			clearErr := internal.ClearByPath(&data, item)
+			if clearErr != nil {
+				log.Println("Error clearing sensitive data:", clearErr, item)
+			}
 		}
 
 		if lastBroadcastedData == nil || !reflect.DeepEqual(data, *lastBroadcastedData) {
@@ -117,126 +82,185 @@ func inspectSwarmServices(cfg *config.Config) {
 	}
 }
 
-func getNetworksInfo(ctx context.Context, cli *client.Client) ([]networkViewModel, error) {
+func getNetworksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]network.Summary, error) {
 	networks, err := cli.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.KeyValuePair{Key: "scope", Value: "swarm"})})
 	if err != nil {
 		log.Printf("Error fetching networks: %v", err)
 		return nil, err
 	}
 
-	networkViewModels := make([]networkViewModel, 0, len(networks))
-	for _, network := range networks {
-		if !network.Ingress {
-			networkViewModels = append(networkViewModels, networkViewModel{
-				ID:   network.ID,
-				Name: network.Name,
-			})
+	filteredNetworks := make([]network.Summary, 0, len(networks))
+	for _, net := range networks {
+		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "network") {
+			net.Labels = nil
+		}
+
+		// Remove the Ingress network, if present
+		if net.Name != "ingress" {
+			filteredNetworks = append(filteredNetworks, net)
 		}
 	}
-	return networkViewModels, nil
+
+	return filteredNetworks, nil
 }
 
-func getNodesInfo(ctx context.Context, cli *client.Client) ([]nodeViewModel, error) {
+func getNodesInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Node, error) {
 	nodes, err := cli.NodeList(ctx, swarm.NodeListOptions{})
 	if err != nil {
 		log.Printf("Error fetching nodes: %v", err)
 		return nil, err
 	}
 
-	nodeViewModels := make([]nodeViewModel, 0, len(nodes))
-	for _, node := range nodes {
-		nodeViewModels = append(nodeViewModels, nodeViewModel{
-			ID:                   node.ID,
-			Hostname:             node.Description.Hostname,
-			Name:                 node.Spec.Name,
-			Role:                 string(node.Spec.Role),
-			PlatformArchitecture: node.Description.Platform.Architecture,
-			CpuCores:             node.Description.Resources.NanoCPUs / 1e9,
-			MemoryBytes:          node.Description.Resources.MemoryBytes,
-			Availability:         string(node.Spec.Availability),
-			Status:               string(node.Status.State),
-		})
-	}
-	return nodeViewModels, nil
+	// Sanitize nodes
+	nodes = sanitizeNodes(nodes, cfg)
+
+	return nodes, nil
 }
 
-func getTasksInfo(ctx context.Context, cli *client.Client, filterArgs filters.Args) ([]taskViewModel, error) {
-	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{Filters: filterArgs})
-	if err != nil {
-		log.Printf("Error fetching tasks: %v", err)
-		return nil, err
-	}
-
-	taskViewModels := make([]taskViewModel, 0, len(tasks))
-	for _, task := range tasks {
-		var containerId string
-		if task.Status.ContainerStatus != nil && task.Status.ContainerStatus.ContainerID != "" {
-			containerId = task.Status.ContainerStatus.ContainerID
-		}
-
-		taskViewModels = append(taskViewModels, taskViewModel{
-			ID:           task.ID,
-			NodeID:       task.NodeID,
-			ServiceID:    task.ServiceID,
-			ContainerID:  containerId,
-			DesiredState: string(task.DesiredState),
-			State:        string(task.Status.State),
-			Slot:         task.Slot,
-			CreatedAt:    task.CreatedAt,
-		})
-	}
-	return taskViewModels, nil
-}
-
-func getServicesInfo(ctx context.Context, cli *client.Client) ([]serviceViewModel, error) {
+func getServicesInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Service, error) {
 	services, err := cli.ServiceList(ctx, swarm.ServiceListOptions{})
 	if err != nil {
 		log.Printf("Error fetching services: %v", err)
 		return nil, err
 	}
 
-	serviceViewModels := make([]serviceViewModel, 0, len(services))
-	for _, service := range services {
-		mode := "unknown"
-		if service.Spec.Mode.Replicated != nil {
-			mode = "replicated"
-		} else if service.Spec.Mode.Global != nil {
-			mode = "global"
-		}
+	// Sanitize services
+	services = sanitizeServices(services, cfg)
 
-		var replicas *uint64
-		if service.Spec.Mode.Replicated != nil && service.Spec.Mode.Replicated.Replicas != nil {
-			r := *service.Spec.Mode.Replicated.Replicas
-			replicas = &r
-		}
+	return services, nil
+}
 
-		var reservationsCpu int64 = 0
-		var reservationsMemory int64 = 0
-		var limitsCpu int64 = 0
-		var limitsMemory int64 = 0
-		if service.Spec.TaskTemplate.Resources != nil {
-			if service.Spec.TaskTemplate.Resources.Reservations != nil {
-				reservationsCpu = service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1e9
-				reservationsMemory = service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes
-			}
-			if service.Spec.TaskTemplate.Resources.Limits != nil {
-				limitsCpu = service.Spec.TaskTemplate.Resources.Limits.NanoCPUs / 1e9
-				limitsMemory = service.Spec.TaskTemplate.Resources.Limits.MemoryBytes
-			}
-		}
+func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Task, error) {
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("desired-state", "running")
 
-		serviceViewModels = append(serviceViewModels, serviceViewModel{
-			ID:                 service.ID,
-			Name:               service.Spec.Name,
-			Image:              service.Spec.TaskTemplate.ContainerSpec.Image,
-			Mode:               mode,
-			Replicas:           replicas,
-			ReservationsCpu:    reservationsCpu,
-			ReservationsMemory: reservationsMemory,
-			LimitsCpu:          limitsCpu,
-			LimitsMemory:       limitsMemory,
-			Networks:           service.Spec.TaskTemplate.Networks,
-		})
+	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{Filters: filterArgs})
+	if err != nil {
+		log.Printf("Error fetching tasks: %v", err)
+		return nil, err
 	}
-	return serviceViewModels, nil
+
+	// Sanitize tasks
+	tasks = sanitizeTasks(tasks, cfg)
+
+	return tasks, nil
+}
+
+// sanitizeNodes removes or redacts fields on nodes according to the configuration.
+func sanitizeNodes(nodes []swarm.Node, cfg *config.Config) []swarm.Node {
+	for i := range nodes {
+		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "node") {
+			nodes[i].Spec.Labels = nil
+		}
+	}
+	return nodes
+}
+
+// sanitizeServices removes or redacts fields on services according to the configuration.
+func sanitizeServices(services []swarm.Service, cfg *config.Config) []swarm.Service {
+	for i := range services {
+		svc := &services[i]
+
+		if cfg.HideAllConfigs {
+			svc.Spec.TaskTemplate.ContainerSpec.Configs = nil
+		}
+		if cfg.HideAllEnvs {
+			svc.Spec.TaskTemplate.ContainerSpec.Env = nil
+		}
+		if cfg.HideAllMounts {
+			svc.Spec.TaskTemplate.ContainerSpec.Mounts = nil
+		}
+		if cfg.HideAllSecrets {
+			svc.Spec.TaskTemplate.ContainerSpec.Secrets = nil
+		}
+		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "service") {
+			svc.Spec.Labels = nil
+			svc.Spec.TaskTemplate.ContainerSpec.Labels = nil
+		}
+
+		// Service-level hide-envs label
+		if svc.Spec.Labels != nil {
+			if hideEnvsRaw, ok := svc.Spec.Labels["io.github.jtgasper3.visualizer.hide-envs"]; ok {
+				hideEnvs := strings.Split(hideEnvsRaw, ",")
+				hideSet := make(map[string]struct{}, len(hideEnvs))
+				for j := range hideEnvs {
+					hideEnvs[j] = strings.TrimSpace(hideEnvs[j])
+					if hideEnvs[j] != "" {
+						hideSet[hideEnvs[j]] = struct{}{}
+					}
+				}
+				envs := svc.Spec.TaskTemplate.ContainerSpec.Env
+				for k, env := range envs {
+					if eq := strings.IndexByte(env, '='); eq > 0 {
+						key := env[:eq]
+						if _, found := hideSet[key]; found {
+							envs[k] = key + "=(sanitized)"
+						}
+					} else {
+						if _, found := hideSet[env]; found {
+							envs[k] = env + "=(sanitized)"
+						}
+					}
+				}
+				svc.Spec.TaskTemplate.ContainerSpec.Env = envs
+			}
+
+			// Service-level hide-labels
+			if hideLabels, ok := svc.Spec.Labels["io.github.jtgasper3.visualizer.hide-labels"]; ok {
+				labelsToHide := strings.Split(hideLabels, ",")
+				for _, label := range labelsToHide {
+					label = strings.TrimSpace(label)
+					if label == "" {
+						continue
+					}
+					if svc.Spec.Labels == nil {
+						continue
+					}
+					if _, exists := svc.Spec.Labels[label]; exists {
+						svc.Spec.Labels[label] = "(sanitized)"
+					}
+				}
+			}
+		}
+
+		// Container-level hide-labels
+		if svc.Spec.TaskTemplate.ContainerSpec.Labels != nil {
+			if hideLabels, ok := svc.Spec.TaskTemplate.ContainerSpec.Labels["io.github.jtgasper3.visualizer.hide-labels"]; ok {
+				labelsToHide := strings.Split(hideLabels, ",")
+				for _, label := range labelsToHide {
+					label = strings.TrimSpace(label)
+					if label == "" {
+						continue
+					}
+					if _, exists := svc.Spec.TaskTemplate.ContainerSpec.Labels[label]; exists {
+						svc.Spec.TaskTemplate.ContainerSpec.Labels[label] = "(sanitized)"
+					}
+				}
+			}
+		}
+	}
+	return services
+}
+
+// sanitizeTasks removes or redacts fields on tasks according to the configuration.
+func sanitizeTasks(tasks []swarm.Task, cfg *config.Config) []swarm.Task {
+	for i := range tasks {
+		t := &tasks[i]
+		if cfg.HideAllConfigs {
+			t.Spec.ContainerSpec.Configs = nil
+		}
+		if cfg.HideAllEnvs {
+			t.Spec.ContainerSpec.Env = nil
+		}
+		if cfg.HideAllMounts {
+			t.Spec.ContainerSpec.Mounts = nil
+		}
+		if cfg.HideAllSecrets {
+			t.Spec.ContainerSpec.Secrets = nil
+		}
+		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "task") {
+			t.Spec.ContainerSpec.Labels = nil
+		}
+	}
+	return tasks
 }

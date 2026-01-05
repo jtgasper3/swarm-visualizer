@@ -18,6 +18,11 @@ services:
       - OIDC_REDIRECT_URL=http://localhost:8080/callback
       - OIDC_SCOPES=openid,profile
       # - CONTEXT_ROOT=/testing
+      # - HIDE_ALL_CONFIGS=true
+      # - HIDE_ALL_ENVS=true
+      # - HIDE_ALL_MOUNTS=true
+      # - HIDE_ALL_SECRETS=true
+      - SENSITIVE_DATA_PATHS=services.*.Spec.TaskTemplate.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source',tasks.*.Spec.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source'
     ports:
       - "8080:8080"
     restart: always
