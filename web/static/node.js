@@ -59,7 +59,7 @@ export default {
         </v-list>
       </v-card-text>
     </v-card>
-    `,
+  `,
   components: {
     Task
   },
@@ -77,17 +77,17 @@ export default {
     combinedServiceStats() {
       return this.node.tasks.reduce((accumulator, task) => {
         const service = task.service;
-        if (service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs) {
-          accumulator.reservedCpu += service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs;
+        if (service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs) {
+          accumulator.reservedCpu += (service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0);
         }
-        if (service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes) {
-          accumulator.reservedMemory += service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes;
+        if (service.Spec.TaskTemplate.Resources.Reservations?.MemoryBytes) {
+          accumulator.reservedMemory += (service.Spec.TaskTemplate.Resources.Reservations?.MemoryBytes ?? 0);
         }
-        if (service.Spec.TaskTemplate.Resources.Limits.NanoCPUs) {
-          accumulator.limitedCpu += service.Spec.TaskTemplate.Resources.Limits.NanoCPUs;
+        if (service.Spec.TaskTemplate.Resources.Limits?.NanoCPUs) {
+          accumulator.limitedCpu += (service.Spec.TaskTemplate.Resources.Limits?.NanoCPUs ?? 0);
         }
-        if (service.Spec.TaskTemplate.Resources.Limits.MemoryBytes) {
-          accumulator.limitedMemory += service.Spec.TaskTemplate.Resources.Limits.MemoryBytes;
+        if (service.Spec.TaskTemplate.Resources.Limits?.MemoryBytes) {
+          accumulator.limitedMemory += (service.Spec.TaskTemplate.Resources.Limits?.MemoryBytes ?? 0);
         }
         return accumulator;
       }, { reservedCpu: 0, reservedMemory: 0, limitedCpu: 0, limitedMemory: 0 });

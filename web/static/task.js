@@ -54,10 +54,10 @@ export default {
                 <template #title><span class="text-body-2">Reservations and Limits</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources.Limits.NanoCPUs ?? 0) / 1e9 }}</span></template>
+                <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes) }} / {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Limits.MemoryBytes) }}</span></template>
+                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Reservations?.MemoryBytes) }} / {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Limits?.MemoryBytes) }}</span></template>
               </v-list-item>
             </div>
           </v-expand-transition>
