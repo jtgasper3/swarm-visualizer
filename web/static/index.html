@@ -115,6 +115,11 @@
                   <v-checkbox-btn :model-value="isSelected" @update:model-value="select" density="compact" hide-details color="primary"></v-checkbox-btn>
                 </v-list-item-action>
               </template>
+              <template v-slot:append>
+                <My-Details :service="service" v-slot="props">
+                  <v-btn icon="mdi-chevron-right" density="compact" v-bind="props" variant="text" aria-label="Service Details"></v-btn> 
+                </My-Details>
+              </template>
             </v-list-item>
           </v-list>
 
@@ -210,10 +215,11 @@
   </div>
 
   <script type="module">
-    import { computed, createApp, ref } from 'vue';
+    import { computed, createApp, shallowRef } from 'vue';
     import { createVuetify } from 'vuetify';
     import { useStorage } from '@vueuse/core';
 
+    import MyDetails from './details.js';
     import Node from './node.js';
     import Websocket from './websocket.js';
 
@@ -225,8 +231,8 @@
 
     createApp({
       setup() {
-        const clusterName = ref('Loading...');
-        const drawer = ref(true);
+        const clusterName = shallowRef('Loading...');
+        const drawer = shallowRef(true);
         const filters = useStorage('filters.3', {
           filterText: '',
           networksSelection: new Array(),
@@ -245,9 +251,9 @@
         });
 
         const sort = useStorage('sort', 'Service Name');
-        const nodes = ref([]);
-        const networks = ref([]);
-        const services = ref([]);
+        const nodes = shallowRef([]);
+        const networks = shallowRef([]);
+        const services = shallowRef([]);
 
         const sortedNetworks = computed(() => networks.value.sort((a, b) => a.Name.localeCompare(b.Name)));
         const sortedNodes = computed(() => nodes.value.sort((a, b) => a.Description.Hostname.localeCompare(b.Description.Hostname)));
@@ -361,6 +367,7 @@
       },
 
       components: {
+        MyDetails,
         Node,
         Websocket,
       },

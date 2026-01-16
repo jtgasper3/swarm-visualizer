@@ -1,13 +1,18 @@
+import Details from './details.js';
 import Task from './task.js';
 import { formatBytes } from './utils.js';
 
 export default {
+  name: 'Node',
   template: `
     <v-card  color="primary-lighten-4" rounded="lg" variant="tonal">
       <v-card-item>
         <v-card-title>
           <v-badge :color="nodeStatus(node.Status.State)" dot inline floating :title="node.Status.State"></v-badge>
           <span :title="node.Description.Hostname">{{ node.Description.Hostname }}</span>
+          <Details :node="node" v-slot="props">
+            <v-btn icon="mdi-chevron-right" density="compact" v-bind="props" aria-label="Service Details"></v-btn> 
+          </Details>
           <span v-if="node.Spec.Availability !== 'active'">({{ node.Spec.Availability }})</span>
         </v-card-title>
         <v-card-subtitle>Node id: {{ node.ID }}</v-card-subtitle>
@@ -36,7 +41,7 @@ export default {
           </thead>
           <tbody>
             <tr>
-              <th>Cores</th>
+              <th>vCPUs</th>
               <td>{{ node.Description.Resources.NanoCPUs / 1e9 }}</td>
               <td>{{ combinedServiceStats.reservedCpu / 1e9 }}</td>
               <td>{{ combinedServiceStats.limitedCpu / 1e9 }}</td>
@@ -61,6 +66,7 @@ export default {
     </v-card>
   `,
   components: {
+    Details,
     Task
   },
   data() {

@@ -1,4 +1,5 @@
 export default {
+  name: 'WebSocket',
   template: `<slot name="icon" :state="reconnectAttempts === 0 ? 'connected' : 'disconnected'"></slot>`,
   data() {
     return {

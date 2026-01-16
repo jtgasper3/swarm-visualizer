@@ -1,6 +1,8 @@
+import Details from './details.js';
 import { formatBytes } from './utils.js';
 
 export default {
+  name: 'Task',
   template: `
     <v-card
       :style="calcStyle(task.service.index)"
@@ -68,13 +70,18 @@ export default {
       </v-card-text>
 
       <v-card-actions class="pa-0 mt-n2" style="min-height: 12px;">
-        <!-- <v-btn append-icon="mdi-chevron-right" class="text-none" slim text="Download receipt" /> -->
-        <v-spacer />
-
         <v-btn density="comfortable" :icon="open ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="open = !open" />
+        <v-spacer />
+        <Details :task="task" v-slot="props">
+            <v-btn append-icon="mdi-chevron-right" class="text-none" slim text="Full Details"
+              v-bind="props"></v-btn> 
+        </Details>
       </v-card-actions>
     </v-card>
-    `,
+  `,
+  components: {
+    Details
+  },
   data() {
     return {
       open: false,
