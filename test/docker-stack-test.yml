@@ -1,0 +1,49 @@
+configs:
+  test:
+    file: ./config_test.txt   # contains: config
+
+networks:
+  test:
+    driver: overlay
+
+secrets:
+  test:
+    file: ./secret_test.txt   # contains: test
+
+services:
+  nginx:
+    image: nginx:latest
+    deploy:
+      replicas: 3
+    environment:
+      TEST: "1"
+      NEXT: "2"
+    networks:
+      - test
+    secrets:
+      - test
+    configs:
+      - test
+    volumes:
+      - type: bind
+        source: .
+        target: /test1
+        read_only: true
+      - type: volume
+        source: test
+        target: /test2
+        read_only: true
+
+  redis:
+    image: redis:latest
+    deploy:
+      mode: global
+      resources:
+        reservations:
+          memory: 4MiB
+          cpus: "1"
+    networks:
+      - test
+
+volumes:
+  test:

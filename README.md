@@ -89,20 +89,6 @@ If not already enabled:
 docker swarm init
 ```
 
-### Spin up some services
-
-```
-docker volume create test
-echo 'test' | docker secret create test -
-echo 'config' | docker config create test -
-docker secret create 
-docker network create --driver overlay test
-docker service create --name nginx --replicas=3 -e TEST=1 -e NEXT=2 --mount type=bind,source=${PWD},target=/test1,readonly --mount type=volume,source=test,target=/test2,readonly  --secret test --config test nginx:latest
-docker service create --name redis --reserve-memory 4mib --reserve-cpu 1 redis:latest
-docker service create --name redis2 --network test redis:latest
-docker service create --name redis3 --mode global redis:latest
-```
-
 ### Build and test
 ```sh
 docker compose -f deployment/docker-compose.yml up --build
@@ -110,17 +96,24 @@ docker compose -f deployment/docker-compose.yml up --build
 
 > The compose file mounts the static assets so they can be modified on the fly.
 
+
+### Spin up some test stacks and individual services
+
+```
+docker stack deploy -c test/docker-stack-test.yml test_1
+docker stack deploy -c test/docker-stack-test.yml test_2
+docker service create --name httpd httpd:2.4
+```
+
 ### Cleaning up
 
 Stop dummy services:
 
 ```sh
- docker service rm nginx redis redis2 redis3
- docker network rm test
- docker secret rm test
- docker secret rm test
- docker volume rm test
- ```
+docker service rm httpd
+docker stack rm test_1
+docker stack rm test_2
+```
 
 Remove Swarm mode:
 

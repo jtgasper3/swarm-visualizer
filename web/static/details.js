@@ -97,7 +97,7 @@ export default {
                       <strong>Resources</strong>
                     </v-col>
 
-                    <v-col cols="8">{{ node.Description.Resources.NanoCPUs / 1e9 }} vCPUs / {{ formatBytes(node.Description.Resources.MemoryBytes) }}</v-col>
+                    <v-col cols="8">{{ (node.Description.Resources?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(node.Description.Resources?.MemoryBytes) }}</v-col>
                   </v-row>
                 </v-col>
 
@@ -156,6 +156,7 @@ export default {
             </v-container>
           </template>
         </v-card>
+
         <v-card
           v-if="task"
           class="mx-auto"
@@ -178,7 +179,7 @@ export default {
                   </v-col>
                   <v-col cols="8">
                     <Details :service="task.service" v-slot="props">
-                      <a class="text-primary" href="javascript:void(0)" v-bind="props" aria-label="Service Details">{{ task.ServiceID }}</a>
+                      <v-btn color="primary" density="compact" slim variant="text" v-bind="props" class="text-none" aria-label="Service Details">{{ task.ServiceID }}</v-btn>
                     </Details>
                    </v-col>
                 </v-row>
@@ -314,6 +315,27 @@ export default {
                   </v-col>
                 </v-row>
               </v-col>
+
+              <v-divider />
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="1"></v-col>
+                  <v-col cols="2">
+                    <strong>Healthcheck</strong>
+                  </v-col>
+                  <v-col cols="8">
+                    <div v-if="task.Spec.ContainerSpec?.Healthcheck">
+                      <strong>Healthcheck:</strong>
+                      <ul>
+                        <li v-for="cmd in task.Spec.ContainerSpec.Healthcheck.Test" :key="cmd">{{ cmd }}</li>
+                      </ul>
+                      <div>Interval: {{ task.Spec.ContainerSpec.Healthcheck.Interval ? task.Spec.ContainerSpec.Healthcheck.Interval / 1e9 + 's' : 'default' }}</div>
+                      <div>Timeout: {{ task.Spec.ContainerSpec.Healthcheck.Timeout ? task.Spec.ContainerSpec.Healthcheck.Timeout / 1e9 + 's' : 'default' }}</div>
+                      <div>Retries: {{ task.Spec.ContainerSpec.Healthcheck.Retries ?? 'default' }}</div>
+                    </div>
+                  </v-col>
+                </v-row>
+              </v-col>
               
               <v-divider />
 
@@ -341,6 +363,7 @@ export default {
             </v-container>
           </template>
         </v-card>
+
         <v-card
           v-if="service"
           class="mx-auto"
@@ -379,6 +402,20 @@ export default {
                     </v-col>
 
                     <v-col cols="8">{{ service.Spec.TaskTemplate.ContainerSpec.Image }}</v-col>
+                  </v-row>
+                </v-col>
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="1"></v-col>
+                    <v-col cols="2">
+                      <strong>Command/Args</strong>
+                    </v-col>
+
+                    <v-col cols="8">
+                      {{ service.Spec.TaskTemplate.ContainerSpec.Args }}
+                    </v-col>
                   </v-row>
                 </v-col>
 
@@ -446,6 +483,45 @@ export default {
                     </v-col>
                   </v-row>
                 </v-col>
+
+                <v-divider />
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="1"></v-col>
+                    <v-col cols="2">
+                      <strong>Healthcheck</strong>
+                    </v-col>
+                    <v-col cols="8">
+                      <div v-if="service.Spec.TaskTemplate.ContainerSpec?.Healthcheck">
+                        <strong>Healthcheck:</strong>
+                        <ul>
+                          <li v-for="cmd in service.Spec.TaskTemplate.ContainerSpec.Healthcheck.Test" :key="cmd">{{ cmd }}</li>
+                        </ul>
+                        <div>Interval: {{ service.Spec.TaskTemplate.ContainerSpec.Healthcheck.Interval ? service.Spec.TaskTemplate.ContainerSpec.Healthcheck.Interval / 1e9 + 's' : 'default' }}</div>
+                        <div>Timeout: {{ service.Spec.TaskTemplate.ContainerSpec.Healthcheck.Timeout ? service.Spec.TaskTemplate.ContainerSpec.Healthcheck.Timeout / 1e9 + 's' : 'default' }}</div>
+                        <div>Retries: {{ service.Spec.TaskTemplate.ContainerSpec.Healthcheck.Retries ?? 'default' }}</div>
+                      </div>
+                    </v-col>
+                  </v-row>
+                </v-col>
+
+                <v-divider />
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="1"></v-col>
+                    <v-col cols="2">
+                      <strong>Hosts</strong>
+                    </v-col>
+                    <v-col cols="8">
+                      <div v-if="service.Spec.TaskTemplate.ContainerSpec?.Hosts">
+                        <strong>Hosts:</strong>
+                        <ul>
+                          <li v-for="host in service.Spec.TaskTemplate.ContainerSpec.Hosts" :key="host">{{ host }}</li>
+                        </ul>
+                      </div>
+                    </v-col>
+                  </v-row>
+                </v-col>
               
                 <v-divider />
 
@@ -475,6 +551,7 @@ export default {
                   </v-row>
                 </v-col>
 
+              
                 <v-divider />
 
                 <v-col cols="12">
@@ -483,7 +560,7 @@ export default {
                       <strong>Resources</strong>
                     </v-col>
 
-                    <v-col cols="8">{{ service.Spec.TaskTemplate.Resources.Reservations.NanoCPUs / 1e9 }} vCPUs / {{ formatBytes(service.Spec.TaskTemplate.Resources.Reservations.MemoryBytes) }}</v-col>
+                    <v-col cols="8">{{ (service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(service.Spec.TaskTemplate.Resources.Reservations?.MemoryBytes) }}</v-col>
                   </v-row>
                 </v-col>
 

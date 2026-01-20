@@ -40,12 +40,12 @@ export default {
                 <v-list-item class="pa-0" min-height="12">
                   <v-list-group value="networks">
                     <template v-slot:activator="{ props }">
-                      <v-list-item class="pa-0" min-height="12" v-bind="props">
+                      <v-list-item fluid class="pa-0" min-height="12" v-bind="props">
                         <template #title><span class="text-body-2">Networks</span></template>
                       </v-list-item>
                     </template>              
                   
-                    <v-list-item v-for="network in service.networks" :key="network.Id" min-height="12" class="pa-0">
+                    <v-list-item v-for="network in service.networks" :key="network.Id" min-height="12" fluid class="pa-0">
                       <template #title><i class="mdi mdi-circle-small"></i><span class="text-body-2">{{ network.Name }}</span></template>
                     </v-list-item>
                   </v-list-group>
