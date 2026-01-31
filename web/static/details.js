@@ -242,6 +242,21 @@ export default {
                 <v-row>
                   <v-col cols="1"></v-col>
                   <v-col cols="2">
+                    <strong>Command/ Args</strong>
+                  </v-col>
+
+                  <v-col cols="8">
+                    {{ task.Spec.ContainerSpec.Args }}
+                  </v-col>
+                </v-row>
+              </v-col>
+
+              <v-divider />
+
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="1"></v-col>
+                  <v-col cols="2">
                     <strong>Environment Variables</strong>
                   </v-col>
                   <v-col cols="8">
@@ -306,21 +321,6 @@ export default {
                 <v-row>
                   <v-col cols="1"></v-col>
                   <v-col cols="2">
-                    <strong>Labels</strong>
-                  </v-col>
-                  <v-col cols="8">
-                    <ul v-for="(value, key) in task.Spec.ContainerSpec.Labels" :key="key">
-                      <li>{{ key }}: {{ value }}</li>
-                    </ul>
-                  </v-col>
-                </v-row>
-              </v-col>
-
-              <v-divider />
-              <v-col cols="12">
-                <v-row>
-                  <v-col cols="1"></v-col>
-                  <v-col cols="2">
                     <strong>Healthcheck</strong>
                   </v-col>
                   <v-col cols="8">
@@ -336,7 +336,23 @@ export default {
                   </v-col>
                 </v-row>
               </v-col>
-              
+            
+              <v-divider />
+
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="1"></v-col>
+                  <v-col cols="2">
+                    <strong>Labels</strong>
+                  </v-col>
+                  <v-col cols="8">
+                    <ul v-for="(value, key) in task.Spec.ContainerSpec.Labels" :key="key">
+                      <li>{{ key }}: {{ value }}</li>
+                    </ul>
+                  </v-col>
+                </v-row>
+              </v-col>
+
               <v-divider />
 
               <v-col cols="12">
@@ -410,7 +426,7 @@ export default {
                   <v-row>
                     <v-col cols="1"></v-col>
                     <v-col cols="2">
-                      <strong>Command/Args</strong>
+                      <strong>Command/ Args</strong>
                     </v-col>
 
                     <v-col cols="8">
@@ -425,7 +441,7 @@ export default {
                   <v-row>
                     <v-col cols="1"></v-col>
                     <v-col cols="2">
-                      <strong>Environment</strong>
+                      <strong>Environment Variables</strong>
                     </v-col>
 
                     <v-col cols="8">
@@ -550,7 +566,22 @@ export default {
                     <v-col cols="8">{{ service.Spec.Mode.Replicated ? 'Replicated' : 'Global' }} {{ service.Spec.Mode.Replicated ? '(' + service.Spec.Mode.Replicated.Replicas + ')' : '' }}</v-col>
                   </v-row>
                 </v-col>
+              
+                <v-divider />
 
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="3">
+                      <strong>Placement Constraints</strong>
+                    </v-col>
+
+                    <v-col cols="8">
+                      <li v-for="constraint in service.Spec.Placement.Constraints" :key="constraint">
+                        {{ constraint }}
+                      </li>
+                    </v-col>
+                  </v-row>
+                </v-col>
               
                 <v-divider />
 
