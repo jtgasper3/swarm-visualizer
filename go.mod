@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/docker/docker v28.5.2+incompatible
-	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/oauth2 v0.34.0
 )
