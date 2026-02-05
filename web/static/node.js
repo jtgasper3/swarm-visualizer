@@ -42,7 +42,7 @@ export default {
           <tbody>
             <tr>
               <th>vCPUs</th>
-              <td>{{ node.Description.Resources.NanoCPUs / 1e9 }}</td>
+              <td>{{ node.Description.Resources?.NanoCPUs / 1e9 }}</td>
               <td>{{ combinedServiceStats.reservedCpu / 1e9 }}</td>
               <td>{{ combinedServiceStats.limitedCpu / 1e9 }}</td>
             </tr>
