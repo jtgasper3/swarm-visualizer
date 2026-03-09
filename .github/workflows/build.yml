@@ -6,6 +6,9 @@ on:
       - README.md
       - LICENSE
 
+permissions:
+  contents: read
+
 env:
   IMAGE_NAME: jtgasper3/swarm-visualizer
 
