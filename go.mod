@@ -1,6 +1,6 @@
 module github.com/jtgasper3/swarm-visualizer
 
-go 1.24.4
+go 1.25.0
 
 require (
 	github.com/docker/docker v28.5.2+incompatible
