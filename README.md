@@ -25,6 +25,8 @@ docker service create visualizer \
 
 ### Docker Compose
 
+See `deployment/` for a fuller example.
+
 ```yaml
 service:
   viz:
@@ -106,7 +108,7 @@ docker swarm init
 
 ### Build and test
 ```sh
-docker compose -f deployment/docker-compose.yml up --watch
+docker compose up --watch
 ```
 
 > The compose file mounts the static assets so they can be modified on the fly.

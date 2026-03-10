@@ -1,23 +1,10 @@
 services:
   swarm-visualizer:
-    image: swarm-visualizer:latest
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: jtgasper3/swarm-visualizer:latest
     deploy:
       placement:
         constraints:
           - node.role == manager
-    develop:
-      watch:
-        - action: sync
-          path: ../web/static
-          target: /static
-          initial_sync: true
-        - action: rebuild
-          path: ..
-          ignore:
-            - web/
     env_file: "../dev.env"
     environment:
       - CLUSTER_NAME=Local Swarm
