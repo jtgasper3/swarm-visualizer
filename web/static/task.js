@@ -5,7 +5,7 @@ export default {
   name: 'Task',
   template: `
     <v-card
-      :style="calcStyle(task.service.index)"
+      :style="task.service ? calcStyle(task.service.index) : {}"
       flat
       rounded="lg"
       class="d-flex flex-column mb-2"
@@ -21,7 +21,7 @@ export default {
       <v-card-text v-if="task.service" class="mt-n2 pa-1 pb-0">
         <v-list density="compact" lines="false" class="pt-0" v-model:opened="opened">
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Image: <span :title="task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0]">{{ task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0] }}</span></span></template>
+            <template #title><span class="text-body-2">Image: <span class="text-truncate d-inline-block" style="max-width: 90%" :title="task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0]">{{ task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0] }}</span></span></template>
           </v-list-item>
           <v-list-item class="pa-0" min-height="12">
             <template #title><span class="text-body-2">Container id: <span :title="task.Status.ContainerStatus?.ContainerID?.substring(0, 12)">{{ task.Status.ContainerStatus?.ContainerID?.substring(0, 12) }}</span></span></template>
@@ -52,9 +52,7 @@ export default {
                 </v-list-item>
               </div>
 
-              <v-list-item class="pa-0" min-height="12">
-                <template #title><span class="text-body-2">Reservations and Limits</span></template>
-              </v-list-item>
+              <v-list-subheader class="pa-0" style="min-height: 12px">Reservations and Limits</v-list-subheader>
               <v-list-item class="pt-0 pb-0" min-height="12">
                 <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
               </v-list-item>
@@ -95,6 +93,7 @@ export default {
   },
   computed: {
     mode() {
+      if (!this.service) return 'unknown';
       if (this.service.Spec.Mode.Replicated) {
         return 'replicated';
       } else if (this.service.Spec.Mode.Global) {
@@ -107,8 +106,17 @@ export default {
   methods: {
     taskStatus(status) {
       switch (status) {
-        case 'running': return 'success'; break
-        default: return 'error'; break
+        case 'running': return 'success';
+        case 'starting':
+        case 'preparing':
+        case 'ready':
+        case 'assigned':
+        case 'accepted':
+        case 'pending':
+        case 'new': return 'info';
+        case 'complete':
+        case 'shutdown': return 'secondary';
+        default: return 'error';
       }
     },
     calcStyle(index) {

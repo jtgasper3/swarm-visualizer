@@ -39,9 +39,9 @@
         <v-app-bar-nav-icon v-if="$vuetify.display.lgAndDown" @click="drawer = !drawer" title="Toggle sorting and filtering pane"></v-app-bar-nav-icon>
 
         <v-app-bar-title>
-          <WebSocket @update="updateReceivedData" @not-authorized="getAuthorized()">
+          <WebSocket @update="updateReceivedData" @not-authorized="getAuthorized()" @state-change="wsState = $event">
             <template #icon="{ state }">
-              <v-badge :color="state === 'connected' ? 'success' : 'error'" dot inline floating :title="state" :aria-label="'Connection: ' + state"></v-badge>
+              <v-badge :color="state === 'connected' ? 'success' : state === 'connecting' ? 'warning' : 'error'" dot inline floating :title="state" :aria-label="'Connection: ' + state"></v-badge>
             </template>
           </WebSocket>
           {{ clusterName }}
@@ -77,10 +77,10 @@
         <div class="px-2">
           <v-defaults-provider :defaults="vuetifyDefaults">
             <v-list v-model:selected="filters.nodesSelection" nav select-strategy="leaf" aria-labelledby="filtering">
-              <span id="filtering" class="font-weight-bold">FILTER</span>
+              <v-list-subheader id="filtering" class="font-weight-bold">FILTER</v-list-subheader>
               
               <v-list-subheader class="font-weight-bold">NODES
-                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click.stop="selectNodes('all')" aria-label="Select all nodes"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectNodes('none')" aria-label="Deselect all nodes"></v-btn>)
+                (<v-btn density="compact" icon="mdi-checkbox-marked" height="20" width="20" color="primary" @click.stop="selectNodes('all')" aria-label="Select all nodes"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-blank-outline" height="20" width="20" color="primary" @click="selectNodes('none')" aria-label="Deselect all nodes"></v-btn>)
               </v-list-subheader>
               <v-list-item v-for="node in sortedNodes" :key="node.ID" :title="node.Description.Hostname" :value="node.ID">
                 <template v-slot:prepend="{ isSelected, select }">
@@ -93,14 +93,16 @@
 
             <v-list nav aria-labelledby="roles">
               <v-list-subheader id="roles" class="font-weight-bold">ROLE</v-list-subheader>
-              <v-btn-toggle
-                v-model="filters.nodeRoles"
-                aria-labelledby="roles"
-              >
-                <v-btn value="manager">Managers</v-btn>
-                <v-btn :value="false">Both</v-btn>
-                <v-btn value="worker">Workers</v-btn>
-              </v-btn-toggle>
+              <v-list-item>
+                <v-btn-toggle
+                  v-model="filters.nodeRoles"
+                  aria-labelledby="roles"
+                >
+                  <v-btn value="manager">Managers</v-btn>
+                  <v-btn :value="false">Both</v-btn>
+                  <v-btn value="worker">Workers</v-btn>
+                </v-btn-toggle>
+              </v-list-item>
             </v-list>
 
             <v-list v-model:opened="filters.openedStacks" v-model:selected="filters.servicesSelection" nav select-strategy="leaf" aria-labelledby="services">
@@ -111,7 +113,7 @@
                 <template v-slot:activator="{ props }">
                   <v-list-item v-bind="props">
                     <v-list-item-title class="font-weight-bold">{{ stack.name }}
-                      (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="secondary" @click.stop="toggleStack(stack, 'on')" :aria-label="'Select all services in ' + stack.name"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="secondary" @click.stop="toggleStack(stack, 'off')" :aria-label="'Deselect all services in ' + stack.name"></v-btn>)
+                      (<v-btn density="compact" icon="mdi-checkbox-marked" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'on')" :aria-label="'Select all services in ' + stack.name"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-blank-outline" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'off')" :aria-label="'Deselect all services in ' + stack.name"></v-btn>)
                     </v-list-item-title>
                   </v-list-item>
                 </template>
@@ -133,12 +135,13 @@
 
             <v-list nav aria-labelledby="modes">
               <v-list-subheader id="modes" class="font-weight-bold">MODE</v-list-subheader>
+              <v-list-item>
                 <v-btn-toggle v-model="filters.serviceMode" aria-labelledby="modes">
                   <v-btn value="replicated">Replicated</v-btn>
                   <v-btn :value="false">Both</v-btn>
                   <v-btn value="global">Global</v-btn>
-                </v-btn-group>
-              </v-btn-toggle>
+                </v-btn-toggle>
+              </v-list-item>
             </v-list>
 
             <!-- <v-list v-if="filters.replicasIncluded" density="comfortable" nav slim>
@@ -150,7 +153,7 @@
 
             <v-list v-model:selected="filters.networksSelection" nav select-strategy="leaf" aria-labelledby="networks">
               <v-list-subheader class="font-weight-bold"><span id="networks">NETWORKS</span>
-                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click="selectNetworks('all')" aria-label="Select all networks"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectNetworks('none')" aria-label="Deselect all networks"></v-btn>)
+                (<v-btn density="compact" icon="mdi-checkbox-marked" height="20" width="20" color="primary" @click="selectNetworks('all')" aria-label="Select all networks"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-blank-outline" height="20" width="20" color="primary" @click="selectNetworks('none')" aria-label="Deselect all networks"></v-btn>)
               </v-list-subheader>
               <v-list-item v-for="network in sortedNetworks" :key="network.Id" :title="network.Name" :value="network.Id">
                 <template v-slot:prepend="{ isSelected, select }">
@@ -182,7 +185,7 @@
             </v-list>
             
             <v-list nav aria-labelledby="sorting">
-              <span id="sorting" class="font-weight-bold">SORT</span>
+              <v-list-subheader id="sorting" class="font-weight-bold">SORT</v-list-subheader>
 
               <v-list-item>
                 <v-select flat hide-details color="primary" bg-color="surface"  :items="['Service Name', 'Created']" label="Sort by"
@@ -196,6 +199,10 @@
           </template>
         </v-defaults-provider>
       </v-navigation-drawer>
+      <v-snackbar :model-value="wsState === 'reconnecting'" color="error" location="top" :timeout="-1">
+        Connection lost — reconnecting...
+      </v-snackbar>
+
       <v-main aria-label="Nodes and Services List">
         <v-container fluid>
           <v-list aria-label="Swarm Nodes" class="pa-0" style="overflow: initial; z-index: initial">
@@ -207,8 +214,16 @@
                 cols="auto"
               >
                 <v-list-item :aria-label="node.Description.Hostname" class="pa-0">
-                  <Node :node="node" :filters="filters" :sort="sort" />
+                  <Node :node="node" :filters="debouncedFilters" :sort="sort" />
                 </v-list-item>
+              </v-col>
+            </v-row>
+            <v-row v-if="filteredNodes.length === 0" justify="center" class="mt-8">
+              <v-col cols="auto">
+                <v-empty-state
+                  :headline="wsState === 'connecting' ? 'Connecting...' : 'No nodes match the current filters'"
+                  :icon="wsState === 'connecting' ? 'mdi-lan-connect' : 'mdi-filter-off-outline'"
+                />
               </v-col>
             </v-row>
           </v-list>
@@ -220,7 +235,7 @@
   <script type="module">
     import { computed, createApp, ref, shallowRef } from 'vue';
     import { createVuetify } from 'vuetify';
-    import { useStorage } from '@vueuse/core';
+    import { useStorage, refDebounced } from '@vueuse/core';
 
     import MyDetails from './details.js';
     import Node from './node.js';
@@ -234,8 +249,9 @@
 
     createApp({
       setup() {
-        const clusterName = shallowRef('Loading...');
-        const drawer = shallowRef(true);
+        const clusterName = shallowRef('');
+        const drawer = useStorage('drawer', true);
+        const wsState = shallowRef('connecting');
         const filters = useStorage('filters.4', {
           filterText: '',
           networksSelection: new Array(),
@@ -292,6 +308,9 @@
           },
         })
 
+        const debouncedFilterText = refDebounced(computed(() => filters.value.filterText), 250);
+        const debouncedFilters = computed(() => ({ ...filters.value, filterText: debouncedFilterText.value }));
+
         const sortedNetworks = computed(() => networks.value.sort((a, b) => a.Name.localeCompare(b.Name)));
         const sortedNodes = computed(() => nodes.value.sort((a, b) => a.Description.Hostname.localeCompare(b.Description.Hostname)));
         const sortedServicesGroups = computed(() => {
@@ -318,12 +337,7 @@
             }
             return node.Spec.Role === filters.value.nodeRoles;
           })
-          .filter(node => {
-            if (filters.node === 'all') {
-              return true;
-            }
-            return filters.value.nodesSelection.includes(node.ID);
-          })
+          .filter(node => filters.value.nodesSelection.includes(node.ID))
         );
 
         function createServiceName(service) {
@@ -341,7 +355,9 @@
           if (option === 'all') {
             const uniqueItems = networks.value.filter(network => !filters.value.networksSelection.includes(network.Id)).map((network => network.Id))
             filters.value.networksSelection.push(...uniqueItems)
-            filters.value.networksSelection.push('(none)')
+            if (!filters.value.networksSelection.includes('(none)')) {
+              filters.value.networksSelection.push('(none)')
+            }
           } else {
             filters.value.networksSelection.length = 0
           }
@@ -453,15 +469,17 @@
         }
 
         function onSystemThemeChange(event) {
-          $vuetify.theme.global.name = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          vuetify.theme.global.name.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         }
 
 
         return {
           clusterName,
           drawer,
+          wsState,
           vuetifyDefaults,
           filters,
+          debouncedFilters,
           sort,
           networks,
           sortedNetworks,

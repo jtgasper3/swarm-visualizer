@@ -17,7 +17,7 @@ export default {
           <span :title="node.Description.Hostname">{{ node.Description.Hostname }}</span>
           <span v-if="node.Spec.Availability !== 'active'">({{ node.Spec.Availability }})</span>
         </v-card-title>
-        <v-card-subtitle>Node id: {{ node.ID }}</v-card-subtitle>
+        <v-card-subtitle>Node id: {{ node.ID.substring(0, 12) }}</v-card-subtitle>
       </v-card-item>
       
       <v-card-text class="mt-n2">
@@ -30,15 +30,9 @@ export default {
             <tr>
               <th class="text-left">
               </th>
-              <th class="text-left">
-                Physical
-              </th>
-              <th class="text-left">
-                Reserved
-              </th>
-              <th class="text-left">
-                Limited
-              </th>
+              <th class="text-left">Phys.</th>
+              <th class="text-left">Res.</th>
+              <th class="text-left">Limit</th>
             </tr>
           </thead>
           <tbody>
@@ -60,7 +54,7 @@ export default {
 
       <v-card-text class="mt-n4">
         <v-list :aria-label="'Services on ' + node.Description.Hostname" class="pa-0">
-          <v-list-item v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :aria-label="task.service.Spec.Name" class="pa-0">
+          <v-list-item v-for="task in sortedAndFilteredServices(node.tasks)" :key="task.id" :aria-label="task.service?.Spec.Name" class="pa-0">
             <Task :task="task" :service="task.service" />
           </v-list-item>
         </v-list>
@@ -83,8 +77,9 @@ export default {
   },
   computed: {
     combinedServiceStats() {
-      return this.node.tasks.reduce((accumulator, task) => {
+      return (this.node.tasks || []).reduce((accumulator, task) => {
         const service = task.service;
+        if (!service) return accumulator;
         if (service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs) {
           accumulator.reservedCpu += (service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0);
         }
@@ -104,9 +99,10 @@ export default {
   methods: {
     sortedAndFilteredServices(tasks) {
       return tasks
+        .filter(task => task.service != null)
         .filter(task => {
           const filterText = this.filters.filterText ? this.filters.filterText.trim() : '';
-          if (filterText.length >= 0 && task.service.Spec.Name.toLowerCase().includes(filterText.toLowerCase())) {
+          if (filterText.length === 0 || task.service.Spec.Name.toLowerCase().includes(filterText.toLowerCase())) {
             return true;
           }
           return false;
@@ -118,16 +114,8 @@ export default {
           return "global" === this.filters.serviceMode && task.service.Spec.Mode.Global !== undefined ||
                  "replicated" === this.filters.serviceMode && task.service.Spec.Mode.Replicated !== undefined;
         })
+        .filter(task => this.filters.servicesSelection.includes(task.service.ID))
         .filter(task => {
-          if (this.filters.service === 'all') {
-            return true;
-          }
-          return this.filters.servicesSelection.includes(task.service.ID);
-        })
-        .filter(task => {
-          if (this.filters.networks === 'all') {
-            return true;
-          }
           const networkIds = task.service.networks ? task.service.networks.map(n => n.Id) : [];
           if (networkIds.length === 0 && this.filters.networksSelection.includes('(none)')) {
             return true;
@@ -150,8 +138,8 @@ export default {
     },
     nodeStatus(status) {
       switch (status) {
-        case 'ready': return 'success'; break
-        default: return 'error'; break
+        case 'ready': return 'success';
+        default: return 'error';
       }
     },
   }

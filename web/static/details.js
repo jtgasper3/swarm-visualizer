@@ -32,7 +32,7 @@ export default {
           class="mx-auto"
           style="overflow: initial; z-index: initial"
           max-width="700"
-          prepend-icon="mdi-earth"
+          prepend-icon="mdi-server"
           rounded="lg"
           :subtitle="'ID: ' + node.ID"
           :title="node.Description.Hostname"
@@ -112,8 +112,8 @@ export default {
                     </v-col>
 
                     <v-col cols="8">
-                      <ul v-for="label in Object.entries(node.Spec.Labels ?? {}).map(([key, value]) => key + '=' + value)" :key="label">
-                        <li>{{ label }}</li>
+                      <ul>
+                        <li v-for="label in Object.entries(node.Spec.Labels ?? {}).map(([key, value]) => key + '=' + value)" :key="label">{{ label }}</li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -164,10 +164,10 @@ export default {
           class="mx-auto"
           style="overflow: initial; z-index: initial"
           max-width="700"
-          prepend-icon="mdi-earth"
+          prepend-icon="mdi-application-cog"
           rounded="lg"
           :subtitle="'Task: ' + task.ID"
-          :title="task.service.Spec.Name"
+          :title="task.service?.Spec.Name"
         >
           <template #text>
             <v-container fluid>
@@ -262,8 +262,8 @@ export default {
                     <strong>Environment Variables</strong>
                   </v-col>
                   <v-col cols="8">
-                    <ul v-for="env in (task.Spec.ContainerSpec?.Env ?? [])" :key="env">
-                      <li>{{ env }}</li>
+                    <ul>
+                      <li v-for="env in (task.Spec.ContainerSpec?.Env ?? [])" :key="env">{{ env }}</li>
                     </ul>
                   </v-col>
                 </v-row>
@@ -278,8 +278,8 @@ export default {
                     <strong>Mounts</strong>
                   </v-col>
                   <v-col cols="8">
-                    <ul v-for="mount in (task.Spec.ContainerSpec?.Mounts ?? [])" :key="mount.Target">
-                      <li>{{ mount.Type }}: {{ mount.Target }} (ReadOnly: {{ mount.ReadOnly }})</li>
+                    <ul>
+                      <li v-for="mount in (task.Spec.ContainerSpec?.Mounts ?? [])" :key="mount.Target">{{ mount.Type }}: {{ mount.Target }} (ReadOnly: {{ mount.ReadOnly }})</li>
                     </ul>
                   </v-col>
                 </v-row>
@@ -294,8 +294,8 @@ export default {
                     <strong>Configs</strong>
                   </v-col>
                   <v-col cols="8">
-                    <ul v-for="config in (task.Spec.ContainerSpec?.Configs ?? [])" :key="config.ConfigID">
-                      <li>{{ config.ConfigName }}</li>
+                    <ul>
+                      <li v-for="config in (task.Spec.ContainerSpec?.Configs ?? [])" :key="config.ConfigID">{{ config.ConfigName }}</li>
                     </ul>
                   </v-col>
                 </v-row>
@@ -310,8 +310,8 @@ export default {
                     <strong>Secrets</strong>
                   </v-col>
                   <v-col cols="8">
-                    <ul v-for="secret in (task.Spec.ContainerSpec?.Secrets ?? [])" :key="secret.SecretID">
-                      <li>{{ secret.SecretName }}</li>
+                    <ul>
+                      <li v-for="secret in (task.Spec.ContainerSpec?.Secrets ?? [])" :key="secret.SecretID">{{ secret.SecretName }}</li>
                     </ul>
                   </v-col>
                 </v-row>
@@ -348,8 +348,8 @@ export default {
                     <strong>Labels</strong>
                   </v-col>
                   <v-col cols="8">
-                    <ul v-for="(value, key) in (task.Spec.ContainerSpec?.Labels ?? {})" :key="key">
-                      <li>{{ key }}: {{ value }}</li>
+                    <ul>
+                      <li v-for="(value, key) in (task.Spec.ContainerSpec?.Labels ?? {})" :key="key">{{ key }}: {{ value }}</li>
                     </ul>
                   </v-col>
                 </v-row>
@@ -387,7 +387,7 @@ export default {
           class="mx-auto"
           max-width="700"
           style="overflow: initial; z-index: initial"
-          prepend-icon="mdi-earth"
+          prepend-icon="mdi-application-cog"
           rounded="lg"
           :subtitle="'Service: ' + service.ID"
           :title="service?.Spec?.Name ? service.Spec.Name : service.Name"
@@ -447,8 +447,8 @@ export default {
                     </v-col>
 
                     <v-col cols="8">
-                      <ul v-for="env in (service.Spec.TaskTemplate.ContainerSpec?.Env ?? [])" :key="env">
-                        <li>{{ env }}</li>
+                      <ul>
+                        <li v-for="env in (service.Spec.TaskTemplate.ContainerSpec?.Env ?? [])" :key="env">{{ env }}</li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -463,8 +463,8 @@ export default {
                       <strong>Mounts</strong>
                     </v-col>
                     <v-col cols="8">
-                      <ul v-for="mount in (service.Spec.TaskTemplate.ContainerSpec?.Mounts ?? [])" :key="mount.Target">
-                        <li>{{ mount.Type }}: {{ mount.Target }} (ReadOnly: {{ mount.ReadOnly }})</li>
+                      <ul>
+                        <li v-for="mount in (service.Spec.TaskTemplate.ContainerSpec?.Mounts ?? [])" :key="mount.Target">{{ mount.Type }}: {{ mount.Target }} (ReadOnly: {{ mount.ReadOnly }})</li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -479,8 +479,8 @@ export default {
                       <strong>Configs</strong>
                     </v-col>
                     <v-col cols="8">
-                      <ul v-for="config in (service.Spec.TaskTemplate.ContainerSpec?.Configs ?? [])" :key="config.ConfigID">
-                        <li>{{ config.ConfigName }}</li>
+                      <ul>
+                        <li v-for="config in (service.Spec.TaskTemplate.ContainerSpec?.Configs ?? [])" :key="config.ConfigID">{{ config.ConfigName }}</li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -495,8 +495,8 @@ export default {
                       <strong>Secrets</strong>
                     </v-col>
                     <v-col cols="8">
-                      <ul v-for="secret in (service.Spec.TaskTemplate.ContainerSpec?.Secrets ?? [])" :key="secret.SecretID">
-                        <li>{{ secret.SecretName }}</li>
+                      <ul>
+                        <li v-for="secret in (service.Spec.TaskTemplate.ContainerSpec?.Secrets ?? [])" :key="secret.SecretID">{{ secret.SecretName }}</li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -550,8 +550,8 @@ export default {
                       <strong>Labels</strong>
                     </v-col>
                     <v-col cols="8">
-                      <ul v-for="(value, key) in (service.Spec.Labels ?? {})" :key="key">
-                        <li>{{ key }}: {{ value }}</li>
+                      <ul>
+                        <li v-for="(value, key) in (service.Spec.Labels ?? {})" :key="key">{{ key }}: {{ value }}</li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -578,9 +578,9 @@ export default {
                     </v-col>
 
                     <v-col cols="8">
-                      <li v-for="constraint in (service.Spec.Placement?.Constraints ?? [])" :key="constraint">
-                        {{ constraint }}
-                      </li>
+                      <ul>
+                        <li v-for="constraint in (service.Spec.Placement?.Constraints ?? [])" :key="constraint">{{ constraint }}</li>
+                      </ul>
                     </v-col>
                   </v-row>
                 </v-col>
