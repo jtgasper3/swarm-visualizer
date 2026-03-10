@@ -241,9 +241,13 @@
           networksSelection: new Array(),
           nodesSelection: new Array(),
           servicesSelection: new Array(),
+          knownNetworkIds: new Array(),
+          knownNodeIds: new Array(),
+          knownServiceIds: new Array(),
           nodeRoles: false,
           serviceMode: false,
           openedStacks: ['default'],
+          selectionsInitialized: false,
           // replicas: [0, 10]
         },
         undefined,
@@ -377,6 +381,24 @@
 
           networks.value = data.networks;
 
+          if (!filters.value.selectionsInitialized) {
+            filters.value.nodesSelection = data.nodes.map(node => node.ID);
+            filters.value.servicesSelection = data.services.map(service => service.ID);
+            filters.value.networksSelection = data.networks.map(network => network.Id);
+            filters.value.knownNodeIds = [...filters.value.nodesSelection];
+            filters.value.knownServiceIds = [...filters.value.servicesSelection];
+            filters.value.knownNetworkIds = [...filters.value.networksSelection];
+            filters.value.selectionsInitialized = true;
+          } else {
+            const newNetworkIds = data.networks
+              .filter(network => !filters.value.knownNetworkIds.includes(network.Id))
+              .map(network => network.Id);
+            if (newNetworkIds.length > 0) {
+              filters.value.networksSelection.push(...newNetworkIds);
+              filters.value.knownNetworkIds.push(...newNetworkIds);
+            }
+          }
+
           services.value = data.services.map((service) => {
             service.index = data.services.findIndex((serv) => serv.ID === service.ID);
             if (service.Spec.TaskTemplate.Networks) {
@@ -384,6 +406,16 @@
             }
             return service;
           })
+
+          if (filters.value.selectionsInitialized) {
+            const newServiceIds = data.services
+              .filter(service => !filters.value.knownServiceIds.includes(service.ID))
+              .map(service => service.ID);
+            if (newServiceIds.length > 0) {
+              filters.value.servicesSelection.push(...newServiceIds);
+              filters.value.knownServiceIds.push(...newServiceIds);
+            }
+          }
 
           nodes.value = data.nodes.map((node) => {
             if (data.tasks) {
@@ -397,6 +429,27 @@
 
             return node;
           });
+
+          if (filters.value.selectionsInitialized) {
+            const newNodeIds = data.nodes
+              .filter(node => !filters.value.knownNodeIds.includes(node.ID))
+              .map(node => node.ID);
+            if (newNodeIds.length > 0) {
+              filters.value.nodesSelection.push(...newNodeIds);
+              filters.value.knownNodeIds.push(...newNodeIds);
+            }
+          }
+
+          // Prune stale IDs that no longer exist in the cluster
+          const currentNodeIds = new Set(data.nodes.map(node => node.ID));
+          const currentServiceIds = new Set(data.services.map(service => service.ID));
+          const currentNetworkIds = new Set(data.networks.map(network => network.Id));
+          filters.value.knownNodeIds = filters.value.knownNodeIds.filter(id => currentNodeIds.has(id));
+          filters.value.knownServiceIds = filters.value.knownServiceIds.filter(id => currentServiceIds.has(id));
+          filters.value.knownNetworkIds = filters.value.knownNetworkIds.filter(id => currentNetworkIds.has(id));
+          filters.value.nodesSelection = filters.value.nodesSelection.filter(id => currentNodeIds.has(id));
+          filters.value.servicesSelection = filters.value.servicesSelection.filter(id => currentServiceIds.has(id));
+          filters.value.networksSelection = filters.value.networksSelection.filter(id => currentNetworkIds.has(id) || id === '(none)');
         }
 
         function onSystemThemeChange(event) {
