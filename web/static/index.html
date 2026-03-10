@@ -18,6 +18,9 @@
     #server.v-table>.v-table__wrapper>table>tbody>tr>th, #server.v-table>.v-table__wrapper>table>tfoot>tr>th, #server.v-table>.v-table__wrapper>table>thead>tr>th {
       height: min-content;
     }
+    .v-list-subheader__text {
+      flex: 1;
+    }
   </style>
   
   <script type="importmap">
@@ -106,8 +109,8 @@
             </v-list>
 
             <v-list v-model:opened="filters.openedStacks" v-model:selected="filters.servicesSelection" nav select-strategy="leaf" aria-labelledby="services">
-              <v-list-subheader class="font-weight-bold"><span id="services">STACKS</span>
-                (<v-btn density="compact" icon="mdi-checkbox-multiple-marked" height="20" width="20" color="primary" @click="selectServices('all')" aria-label="Select all services"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-multiple-blank-outline" height="20" width="20" color="primary" @click="selectServices('none')" aria-label="Deselect all services"></v-btn>)
+              <v-list-subheader class="font-weight-bold">
+                <div style="display: flex; align-items: center; width: 100%;"><span id="services">STACKS</span>&nbsp;(<v-btn density="compact" icon="mdi-checkbox-multiple-marked" height="20" width="20" color="primary" @click="selectServices('all')" aria-label="Select all services"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-multiple-blank-outline" height="20" width="20" color="primary" @click="selectServices('none')" aria-label="Deselect all services"></v-btn>)<span class="ms-auto"><v-btn density="compact" icon="mdi-unfold-more-horizontal" height="20" width="20" @click="expandAllStacks()" aria-label="Expand all stacks"></v-btn>/<v-btn density="compact" icon="mdi-unfold-less-horizontal" height="20" width="20" @click="collapseAllStacks()" aria-label="Collapse all stacks"></v-btn></span></div>
               </v-list-subheader>
               <v-list-group v-for="stack in sortedServicesGroups" :key="stack.name" :value="stack.name">
                 <template v-slot:activator="{ props }">
@@ -381,6 +384,14 @@
           }
         }
 
+        function expandAllStacks() {
+          filters.value.openedStacks = sortedServicesGroups.value.map(stack => stack.name);
+        }
+
+        function collapseAllStacks() {
+          filters.value.openedStacks = [];
+        }
+
         function toggleStack(stack, state) {
           stack.services.forEach((service) => {
             const index = filters.value.servicesSelection.indexOf(service.ID);
@@ -493,6 +504,8 @@
           selectNetworks,
           selectNodes,
           selectServices,
+          expandAllStacks,
+          collapseAllStacks,
           toggleStack,
           updateReceivedData,
           onSystemThemeChange,

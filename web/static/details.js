@@ -61,7 +61,7 @@ export default {
                     </v-col>
 
                     <v-col cols="8">
-                      {{ node.Spec.Role }} 
+                      {{ node.Spec.Role }}
                        <span v-if="node.ManagerStatus?.Leader">(leader)</span>
                     </v-col>
                   </v-row>
@@ -78,6 +78,44 @@ export default {
                     <v-col cols="8">{{ node.Spec.Availability }}</v-col>
                   </v-row>
                 </v-col>
+
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="3">
+                      <strong>State</strong>
+                    </v-col>
+
+                    <v-col cols="8">{{ node.Status.State }}</v-col>
+                  </v-row>
+                </v-col>
+
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="3">
+                      <strong>Address</strong>
+                    </v-col>
+
+                    <v-col cols="8">{{ node.Status.Addr }}</v-col>
+                  </v-row>
+                </v-col>
+
+                <template v-if="node.ManagerStatus">
+                  <v-divider />
+
+                  <v-col cols="12">
+                    <v-row>
+                      <v-col cols="3">
+                        <strong>Manager</strong>
+                      </v-col>
+
+                      <v-col cols="8">{{ node.ManagerStatus.Reachability }} — {{ node.ManagerStatus.Addr }}</v-col>
+                    </v-row>
+                  </v-col>
+                </template>
 
                 <v-divider />
 
@@ -205,7 +243,12 @@ export default {
                   <v-col cols="3">
                     <strong>Status</strong>
                   </v-col>
-                  <v-col cols="8">{{ task.Status.State }}</v-col>
+                  <v-col cols="8">
+                    {{ task.Status.State }}
+                    <span v-if="task.DesiredState && task.DesiredState !== task.Status.State"> (desired: {{ task.DesiredState }})</span>
+                    <div v-if="task.Status.Message" class="text-medium-emphasis text-body-2">{{ task.Status.Message }}</div>
+                    <div v-if="task.Status.Err" class="text-error text-body-2">{{ task.Status.Err }}</div>
+                  </v-col>
                 </v-row>
               </v-col>
 
@@ -217,6 +260,17 @@ export default {
                     <strong>Slot</strong>
                   </v-col>
                   <v-col cols="8">{{ task.Slot }}</v-col>
+                </v-row>
+              </v-col>
+
+              <v-divider />
+
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="3">
+                    <strong>Container ID</strong>
+                  </v-col>
+                  <v-col cols="8">{{ task.Status.ContainerStatus?.ContainerID }}</v-col>
                 </v-row>
               </v-col>
 
@@ -279,7 +333,7 @@ export default {
                   </v-col>
                   <v-col cols="8">
                     <ul>
-                      <li v-for="mount in (task.Spec.ContainerSpec?.Mounts ?? [])" :key="mount.Target">{{ mount.Type }}: {{ mount.Target }} (ReadOnly: {{ mount.ReadOnly }})</li>
+                      <li v-for="mount in (task.Spec.ContainerSpec?.Mounts ?? [])" :key="mount.Target">{{ mount.Type }}: {{ mount.Target }}<span v-if="mount.ReadOnly"> (ReadOnly)</span></li>
                     </ul>
                   </v-col>
                 </v-row>
@@ -323,6 +377,22 @@ export default {
                 <v-row>
                   <v-col cols="1"></v-col>
                   <v-col cols="2">
+                    <strong>Networks</strong>
+                  </v-col>
+                  <v-col cols="8">
+                    <ul>
+                      <li v-for="net in (task.Spec.Networks ?? [])" :key="net.Target">{{ task.service?.networks?.find(n => n.Id === net.Target)?.Name ?? net.Target }} ({{ net.Target }})<span v-if="net.Aliases?.length">: {{ net.Aliases.join(', ') }}</span></li>
+                    </ul>
+                  </v-col>
+                </v-row>
+              </v-col>
+
+              <v-divider />
+
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="1"></v-col>
+                  <v-col cols="2">
                     <strong>Healthcheck</strong>
                   </v-col>
                   <v-col cols="8">
@@ -352,6 +422,36 @@ export default {
                       <li v-for="(value, key) in (task.Spec.ContainerSpec?.Labels ?? {})" :key="key">{{ key }}: {{ value }}</li>
                     </ul>
                   </v-col>
+                </v-row>
+              </v-col>
+
+              <v-divider />
+
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="3">
+                    <strong>Resources</strong>
+                  </v-col>
+                  <v-col cols="8">
+                    <div>Reservations: {{ (task.Spec.Resources?.Reservations?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(task.Spec.Resources?.Reservations?.MemoryBytes) }}</div>
+                    <div>Limits: {{ (task.Spec.Resources?.Limits?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(task.Spec.Resources?.Limits?.MemoryBytes) }}</div>
+                  </v-col>
+                </v-row>
+              </v-col>
+
+              <v-divider />
+
+              <v-col cols="12">
+                <v-row>
+                  <v-col cols="3">
+                    <strong>Restart Policy</strong>
+                  </v-col>
+                  <v-col cols="8" v-if="task.Spec.RestartPolicy">
+                    <div>Condition: {{ task.Spec.RestartPolicy.Condition }}</div>
+                    <div v-if="task.Spec.RestartPolicy.Delay">Delay: {{ task.Spec.RestartPolicy.Delay / 1e9 }}s</div>
+                    <div v-if="task.Spec.RestartPolicy.MaxAttempts">Max Attempts: {{ task.Spec.RestartPolicy.MaxAttempts }}</div>
+                  </v-col>
+                  <v-col cols="8" v-else>—</v-col>
                 </v-row>
               </v-col>
 
@@ -406,7 +506,25 @@ export default {
                      </v-col>
                   </v-row>
                 </v-col>
-              
+
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="3">
+                      <strong>Published Ports</strong>
+                    </v-col>
+                    <v-col cols="8">
+                      <ul>
+                        <li v-for="port in (service.Endpoint?.Ports ?? service.Spec.EndpointSpec?.Ports ?? [])" :key="port.PublishedPort">
+                          {{ port.Protocol }}: {{ port.PublishedPort }} → {{ port.TargetPort }}
+                          <span v-if="port.PublishMode"> ({{ port.PublishMode }})</span>
+                        </li>
+                      </ul>
+                    </v-col>
+                  </v-row>
+                </v-col>
+
                 <v-divider />
 
                 <v-col cols="12">
@@ -419,7 +537,7 @@ export default {
                       <strong>Image</strong>
                     </v-col>
 
-                    <v-col cols="8">{{ service.Spec.TaskTemplate.ContainerSpec.Image }}</v-col>
+                    <v-col cols="8" style="overflow: hidden;"><span style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left;">{{ service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0] }}</span></v-col>
                   </v-row>
                 </v-col>
                 <v-divider />
@@ -464,7 +582,7 @@ export default {
                     </v-col>
                     <v-col cols="8">
                       <ul>
-                        <li v-for="mount in (service.Spec.TaskTemplate.ContainerSpec?.Mounts ?? [])" :key="mount.Target">{{ mount.Type }}: {{ mount.Target }} (ReadOnly: {{ mount.ReadOnly }})</li>
+                        <li v-for="mount in (service.Spec.TaskTemplate.ContainerSpec?.Mounts ?? [])" :key="mount.Target">{{ mount.Type }}: {{ mount.Target }}<span v-if="mount.ReadOnly"> (ReadOnly)</span></li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -485,7 +603,7 @@ export default {
                     </v-col>
                   </v-row>
                 </v-col>
-              
+
                 <v-divider />
 
                 <v-col cols="12">
@@ -497,6 +615,22 @@ export default {
                     <v-col cols="8">
                       <ul>
                         <li v-for="secret in (service.Spec.TaskTemplate.ContainerSpec?.Secrets ?? [])" :key="secret.SecretID">{{ secret.SecretName }}</li>
+                      </ul>
+                    </v-col>
+                  </v-row>
+                </v-col>
+
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="1"></v-col>
+                    <v-col cols="2">
+                      <strong>Networks</strong>
+                    </v-col>
+                    <v-col cols="8">
+                      <ul>
+                        <li v-for="net in (service.Spec.TaskTemplate.Networks ?? [])" :key="net.Target">{{ service.networks?.find(n => n.Id === net.Target)?.Name ?? net.Target }} ({{ net.Target }})<span v-if="net.Aliases?.length">: {{ net.Aliases.join(', ') }}</span></li>
                       </ul>
                     </v-col>
                   </v-row>
@@ -592,8 +726,41 @@ export default {
                     <v-col cols="3">
                       <strong>Resources</strong>
                     </v-col>
+                    <v-col cols="8">
+                      <div>Reservations: {{ (service.Spec.TaskTemplate.Resources?.Reservations?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(service.Spec.TaskTemplate.Resources?.Reservations?.MemoryBytes) }}</div>
+                      <div>Limits: {{ (service.Spec.TaskTemplate.Resources?.Limits?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(service.Spec.TaskTemplate.Resources?.Limits?.MemoryBytes) }}</div>
+                    </v-col>
+                  </v-row>
+                </v-col>
 
-                    <v-col cols="8">{{ (service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0) / 1e9 }} vCPUs / {{ formatBytes(service.Spec.TaskTemplate.Resources.Reservations?.MemoryBytes) }}</v-col>
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="3">
+                      <strong>Restart Policy</strong>
+                    </v-col>
+                    <v-col cols="8" v-if="service.Spec.TaskTemplate.RestartPolicy">
+                      <div>Condition: {{ service.Spec.TaskTemplate.RestartPolicy.Condition }}</div>
+                      <div v-if="service.Spec.TaskTemplate.RestartPolicy.Delay">Delay: {{ service.Spec.TaskTemplate.RestartPolicy.Delay / 1e9 }}s</div>
+                      <div v-if="service.Spec.TaskTemplate.RestartPolicy.MaxAttempts">Max Attempts: {{ service.Spec.TaskTemplate.RestartPolicy.MaxAttempts }}</div>
+                    </v-col>
+                  </v-row>
+                </v-col>
+
+                <v-divider />
+
+                <v-col cols="12">
+                  <v-row>
+                    <v-col cols="3">
+                      <strong>Update Config</strong>
+                    </v-col>
+                    <v-col cols="8" v-if="service.Spec.UpdateConfig">
+                      <div>Parallelism: {{ service.Spec.UpdateConfig.Parallelism }}</div>
+                      <div v-if="service.Spec.UpdateConfig.Delay">Delay: {{ service.Spec.UpdateConfig.Delay / 1e9 }}s</div>
+                      <div>Failure Action: {{ service.Spec.UpdateConfig.FailureAction }}</div>
+                      <div>Order: {{ service.Spec.UpdateConfig.Order }}</div>
+                    </v-col>
                   </v-row>
                 </v-col>
 

@@ -1,6 +1,7 @@
 
 Swarm Visualizer
 ================
+[Source Code](https://github.com/jtgasper3/swarm-visualizer) | [Docker Image](https://hub.docker.com/r/jtgasper3/swarm-visualizer)
 
 The Swarm Visualizer extends on the [`dockersamples/docker-swarm-visualizer`](https://github.com/dockersamples/docker-swarm-visualizer) concept demo'd at the 2015 DockerCon EU keynote.
 

@@ -21,7 +21,7 @@ export default {
       <v-card-text v-if="task.service" class="mt-n2 pa-1 pb-0">
         <v-list density="compact" lines="false" class="pt-0" v-model:opened="opened">
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Image: <span class="text-truncate d-inline-block" style="max-width: 90%" :title="task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0]">{{ task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0] }}</span></span></template>
+            <template #title><span class="text-body-2">Image: <span :title="task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0]">{{ task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0].split('/').pop() }}</span></span></template>
           </v-list-item>
           <v-list-item class="pa-0" min-height="12">
             <template #title><span class="text-body-2">Container id: <span :title="task.Status.ContainerStatus?.ContainerID?.substring(0, 12)">{{ task.Status.ContainerStatus?.ContainerID?.substring(0, 12) }}</span></span></template>
