@@ -8,6 +8,12 @@ services:
       placement:
         constraints:
           - node.role == manager
+    develop:
+      watch:
+        - action: sync
+          path: ../web/static
+          target: /static
+          initial_sync: true
     env_file: "../dev.env"
     environment:
       - CLUSTER_NAME=Local Swarm
@@ -30,7 +36,6 @@ services:
       - client_secret
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $PWD/web/static:/static
     
 secrets:
   client_secret:

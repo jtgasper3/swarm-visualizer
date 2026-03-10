@@ -105,7 +105,7 @@ docker swarm init
 
 ### Build and test
 ```sh
-docker compose -f deployment/docker-compose.yml up --build
+docker compose -f deployment/docker-compose.yml up --watch
 ```
 
 > The compose file mounts the static assets so they can be modified on the fly.
