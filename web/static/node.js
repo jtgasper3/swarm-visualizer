@@ -20,7 +20,7 @@ export default {
       
       <v-card-text class="mt-n2">
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.Spec.Role }}</v-chip>
-        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.Description.Platform.Architecture }}</v-chip>
+        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.Description.Platform?.Architecture }}</v-chip>
         <v-spacer />
 
         <v-table id="server" density="compact" title="Node Resources" aria-label="Node Resources">
@@ -48,7 +48,7 @@ export default {
             </tr>
             <tr>
               <th>Memory</th>
-              <td>{{ formatBytes(node.Description.Resources.MemoryBytes) }}</td>
+              <td>{{ formatBytes(node.Description.Resources?.MemoryBytes) }}</td>
               <td>{{ formatBytes(combinedServiceStats.reservedMemory) }}</td>
               <td>{{ formatBytes(combinedServiceStats.limitedMemory) }}</td>
             </tr>
