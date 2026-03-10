@@ -52,6 +52,16 @@ export default {
                 </v-list-item>
               </div>
 
+              <div v-if="task.Status.Err || task.Status.ContainerStatus?.ExitCode">
+                <v-list-subheader class="pa-0" style="min-height: 12px">Exit Info</v-list-subheader>
+                <v-list-item class="pt-0 pb-0" min-height="12" v-if="task.Status.ContainerStatus?.ExitCode != null">
+                  <template #title><span class="text-body-2">Exit code: {{ task.Status.ContainerStatus.ExitCode }}</span></template>
+                </v-list-item>
+                <v-list-item class="pt-0 pb-0" min-height="12" v-if="task.Status.Err">
+                  <template #title><span class="text-body-2" style="white-space: normal; word-break: break-word;">Error: {{ task.Status.Err }}</span></template>
+                </v-list-item>
+              </div>
+
               <v-list-subheader class="pa-0" style="min-height: 12px">Reservations and Limits</v-list-subheader>
               <v-list-item class="pt-0 pb-0" min-height="12">
                 <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
@@ -114,7 +124,7 @@ export default {
         case 'accepted':
         case 'pending':
         case 'new': return 'info';
-        case 'complete':
+        case 'complete': return 'warning';
         case 'shutdown': return 'secondary';
         default: return 'error';
       }

@@ -116,6 +116,13 @@ export default {
         })
         .filter(task => this.filters.servicesSelection.includes(task.service.ID))
         .filter(task => {
+          if (!this.filters.taskStateFilter) return true;
+          const isStopped = task.Status.State === 'failed' || task.Status.State === 'complete';
+          if (this.filters.taskStateFilter === 'healthy') return !isStopped;
+          if (this.filters.taskStateFilter === 'failed') return isStopped;
+          return true;
+        })
+        .filter(task => {
           const networkIds = task.service.networks ? task.service.networks.map(n => n.Id) : [];
           if (networkIds.length === 0 && this.filters.networksSelection.includes('(none)')) {
             return true;

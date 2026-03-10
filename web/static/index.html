@@ -147,6 +147,17 @@
               </v-list-item>
             </v-list>
 
+            <v-list nav aria-labelledby="task-state">
+              <v-list-subheader id="task-state" class="font-weight-bold">TASK STATE</v-list-subheader>
+              <v-list-item>
+                <v-btn-toggle v-model="filters.taskStateFilter" aria-labelledby="task-state">
+                  <v-btn value="healthy">Healthy</v-btn>
+                  <v-btn :value="false">Both</v-btn>
+                  <v-btn value="failed">Stopped</v-btn>
+                </v-btn-toggle>
+              </v-list-item>
+            </v-list>
+
             <!-- <v-list v-if="filters.replicasIncluded" density="comfortable" nav slim>
                 <v-list-subheader class="font-weight-bold">REPLICAS</v-list-subheader>
                 <v-list-item>
@@ -265,6 +276,7 @@
           knownServiceIds: new Array(),
           nodeRoles: false,
           serviceMode: false,
+          taskStateFilter: false,
           openedStacks: ['default'],
           selectionsInitialized: false,
           // replicas: [0, 10]

@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"reflect"
 	"slices"
@@ -26,9 +27,16 @@ type SwarmData struct {
 	Tasks       []swarm.Task      `json:"tasks"`
 }
 
+type cachedTask struct {
+	task      swarm.Task
+	firstSeen time.Time
+}
+
 var (
 	broadcast           = make(chan []byte)
 	lastBroadcastedData *SwarmData
+	// stoppedTaskCache is only accessed from the single inspectSwarmServices goroutine.
+	stoppedTaskCache = make(map[string]cachedTask)
 )
 
 func inspectSwarmServices(cfg *config.Config) {
@@ -130,21 +138,69 @@ func getServicesInfo(ctx context.Context, cli *client.Client, cfg *config.Config
 	return services, nil
 }
 
-func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Task, error) {
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("desired-state", "running")
-	filterArgs.Add("desired-state", "accepted")
+const failedTaskGracePeriod = 30 * time.Second
 
-	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{Filters: filterArgs})
+func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Task, error) {
+	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{})
 	if err != nil {
 		log.Printf("Error fetching tasks: %v", err)
 		return nil, err
 	}
 
-	// Sanitize tasks
-	tasks = sanitizeTasks(tasks, cfg)
+	now := time.Now()
 
-	return tasks, nil
+	// Single pass: update the stopped-task cache and collect running/accepted tasks.
+	var result []swarm.Task
+	resultIDs := make(map[string]struct{})
+	for _, t := range tasks {
+		if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateComplete {
+			if entry, exists := stoppedTaskCache[t.ID]; exists {
+				stoppedTaskCache[t.ID] = cachedTask{task: t, firstSeen: entry.firstSeen}
+			} else {
+				stoppedTaskCache[t.ID] = cachedTask{task: t, firstSeen: now}
+			}
+		}
+		if t.DesiredState == swarm.TaskStateRunning || t.DesiredState == swarm.TaskStateAccepted {
+			result = append(result, t)
+			resultIDs[t.ID] = struct{}{}
+		}
+	}
+
+	// Evict expired cache entries.
+	for id, entry := range stoppedTaskCache {
+		if now.Sub(entry.firstSeen) >= failedTaskGracePeriod {
+			delete(stoppedTaskCache, id)
+		}
+	}
+
+	// Append the most recently stopped task per slot from the cache.
+	// For replicated services the key is "serviceID:slot"; for global
+	// services (slot == 0) it is "serviceID:nodeID". Only the newest entry
+	// per slot is kept so we don't flood the view with historical tasks.
+	newestStopped := make(map[string]swarm.Task)
+	for _, entry := range stoppedTaskCache {
+		t := entry.task
+		if _, inResult := resultIDs[t.ID]; inResult {
+			continue
+		}
+		var key string
+		if t.Slot > 0 {
+			key = fmt.Sprintf("%s:%d", t.ServiceID, t.Slot)
+		} else {
+			key = fmt.Sprintf("%s:%s", t.ServiceID, t.NodeID)
+		}
+		if existing, ok := newestStopped[key]; !ok || t.CreatedAt.After(existing.CreatedAt) {
+			newestStopped[key] = t
+		}
+	}
+	for _, t := range newestStopped {
+		result = append(result, t)
+	}
+
+	// Sanitize tasks
+	result = sanitizeTasks(result, cfg)
+
+	return result, nil
 }
 
 // sanitizeNodes removes or redacts fields on nodes according to the configuration.
