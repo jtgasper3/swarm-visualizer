@@ -7,6 +7,7 @@ export default {
       v-model="dialog"
       fullscreen
       scrollable
+      :aria-label="title + ' Details'"
     >
       <template v-slot:activator="{ props: activatorProps }">
         <slot v-bind="activatorProps" />
@@ -21,6 +22,7 @@ export default {
             <v-btn
               icon="mdi-close"
               @click="dialog = false"
+              aria-label="Close details"
             ></v-btn>
             <v-toolbar-title>{{ title }} Details</v-toolbar-title>
         </v-toolbar>

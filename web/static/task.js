@@ -12,7 +12,7 @@ export default {
     >
       <v-card-item density="compact" class="pa-1">
         <v-card-title v-if="task.service" class="text-subtitle-1 font-weight-bold">
-          <v-badge :color="taskStatus(task.Status.State)" dot inline floating :title="task.Status.State"></v-badge>
+          <v-badge :color="taskStatus(task.Status.State)" dot inline floating :title="task.Status.State" :aria-label="'Task status: ' + task.Status.State"></v-badge>
           <span :title="task.service.Spec.Name">{{ task.service.Spec.Name }}</span>
         </v-card-title>
         <v-card-subtitle class="pa-0"><v-chip color="primary" class="ml-1 pa-1" label size="x-medium" density="compact" slim>{{ mode }}</v-chip></v-card-subtitle>
@@ -70,7 +70,7 @@ export default {
       </v-card-text>
 
       <v-card-actions class="pa-0 mt-n2" style="min-height: 12px;">
-        <v-btn density="comfortable" :icon="open ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="open = !open" />
+        <v-btn density="comfortable" :icon="open ? 'mdi-chevron-up' : 'mdi-chevron-down'" @click="open = !open" :aria-label="open ? 'Collapse task details' : 'Expand task details'" :aria-expanded="open.toString()" />
         <v-spacer />
         <Details :task="task" v-slot="props">
             <v-btn append-icon="mdi-chevron-right" class="text-none" slim text="Full Details"

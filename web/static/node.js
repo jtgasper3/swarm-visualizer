@@ -8,10 +8,10 @@ export default {
     <v-card  color="primary-lighten-4" rounded="lg" variant="tonal">
       <v-card-item>
         <v-card-title>
-          <v-badge :color="nodeStatus(node.Status.State)" dot inline floating :title="node.Status.State"></v-badge>
+          <v-badge :color="nodeStatus(node.Status.State)" dot inline floating :title="node.Status.State" :aria-label="'Node status: ' + node.Status.State"></v-badge>
           <span :title="node.Description.Hostname">{{ node.Description.Hostname }}</span>
           <Details :node="node" v-slot="props">
-            <v-btn icon="mdi-chevron-right" density="compact" v-bind="props" aria-label="Service Details"></v-btn> 
+            <v-btn icon="mdi-chevron-right" density="compact" v-bind="props" :aria-label="'Details for node ' + node.Description.Hostname"></v-btn>
           </Details>
           <span v-if="node.Spec.Availability !== 'active'">({{ node.Spec.Availability }})</span>
         </v-card-title>
@@ -19,8 +19,8 @@ export default {
       </v-card-item>
       
       <v-card-text class="mt-n2">
-        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.Spec.Role }}</v-chip>
-        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium">{{ node.Description.Platform?.Architecture }}</v-chip>
+        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium" :aria-label="'Role: ' + node.Spec.Role">{{ node.Spec.Role }}</v-chip>
+        <v-chip color="primary" class="ma-1 pa-1" label size="x-medium" :aria-label="'Architecture: ' + node.Description.Platform?.Architecture">{{ node.Description.Platform?.Architecture }}</v-chip>
         <v-spacer />
 
         <v-table id="server" density="compact" title="Node Resources" aria-label="Node Resources">

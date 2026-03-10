@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -80,7 +80,7 @@
               <span id="filtering" class="font-weight-bold">FILTER</span>
               
               <v-list-subheader class="font-weight-bold">NODES
-                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click.stop="selectNodes('all')"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectNodes('none')"></v-btn>)
+                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click.stop="selectNodes('all')" aria-label="Select all nodes"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectNodes('none')" aria-label="Deselect all nodes"></v-btn>)
               </v-list-subheader>
               <v-list-item v-for="node in sortedNodes" :key="node.ID" :title="node.Description.Hostname" :value="node.ID">
                 <template v-slot:prepend="{ isSelected, select }">
@@ -95,6 +95,7 @@
               <v-list-subheader id="roles" class="font-weight-bold">ROLE</v-list-subheader>
               <v-btn-toggle
                 v-model="filters.nodeRoles"
+                aria-labelledby="roles"
               >
                 <v-btn value="manager">Managers</v-btn>
                 <v-btn :value="false">Both</v-btn>
@@ -104,13 +105,13 @@
 
             <v-list v-model:opened="filters.openedStacks" v-model:selected="filters.servicesSelection" nav select-strategy="leaf" aria-labelledby="services">
               <v-list-subheader class="font-weight-bold"><span id="services">STACKS</span>
-                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click="selectServices('all')"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectServices('none')"></v-btn>)
+                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click="selectServices('all')" aria-label="Select all services"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectServices('none')" aria-label="Deselect all services"></v-btn>)
               </v-list-subheader>
               <v-list-group v-for="stack in sortedServicesGroups" :key="stack.name" :value="stack.name">
                 <template v-slot:activator="{ props }">
                   <v-list-item v-bind="props">
                     <v-list-item-title class="font-weight-bold">{{ stack.name }}
-                      (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'on')"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'off')"></v-btn>)
+                      (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'on')" :aria-label="'Select all services in ' + stack.name"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'off')" :aria-label="'Deselect all services in ' + stack.name"></v-btn>)
                     </v-list-item-title>
                   </v-list-item>
                 </template>
@@ -132,7 +133,7 @@
 
             <v-list nav aria-labelledby="modes">
               <v-list-subheader id="modes" class="font-weight-bold">MODE</v-list-subheader>
-                <v-btn-toggle v-model="filters.serviceMode">
+                <v-btn-toggle v-model="filters.serviceMode" aria-labelledby="modes">
                   <v-btn value="replicated">Replicated</v-btn>
                   <v-btn :value="false">Both</v-btn>
                   <v-btn value="global">Global</v-btn>
@@ -149,7 +150,7 @@
 
             <v-list v-model:selected="filters.networksSelection" nav select-strategy="leaf" aria-labelledby="networks">
               <v-list-subheader class="font-weight-bold"><span id="networks">NETWORKS</span>
-                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click="selectNetworks('all')"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectNetworks('none')"></v-btn>)
+                (<v-btn density="compact" icon="mdi-plus" height="20" width="20" color="primary" @click="selectNetworks('all')" aria-label="Select all networks"></v-btn>/<v-btn density="compact" icon="mdi-minus" height="20" width="20" color="primary" @click="selectNetworks('none')" aria-label="Deselect all networks"></v-btn>)
               </v-list-subheader>
               <v-list-item v-for="network in sortedNetworks" :key="network.Id" :title="network.Name" :value="network.Id">
                 <template v-slot:prepend="{ isSelected, select }">
@@ -184,7 +185,7 @@
               <span id="sorting" class="font-weight-bold">SORT</span>
 
               <v-list-item>
-                <v-select flat hide-details color="primary" bg-color="surface"  :items="['Service Name', 'Created']" label="Country"
+                <v-select flat hide-details color="primary" bg-color="surface"  :items="['Service Name', 'Created']" label="Sort by"
                   :list-props="{ density: 'compact', rounded: 't-0' }" v-model="sort" single-line variant="solo" />
               </v-list-item>
             </v-list>
