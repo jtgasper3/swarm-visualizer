@@ -7,12 +7,14 @@ export default {
   template: `
     <v-card  color="primary-lighten-4" rounded="lg" variant="tonal">
       <v-card-item>
-        <v-card-title>
-          <v-badge :color="nodeStatus(node.Status.State)" dot inline floating :title="node.Status.State" :aria-label="'Node status: ' + node.Status.State"></v-badge>
-          <span :title="node.Description.Hostname">{{ node.Description.Hostname }}</span>
+        <template v-slot:append>
           <Details :node="node" v-slot="props">
             <v-btn icon="mdi-chevron-right" density="compact" v-bind="props" :aria-label="'Details for node ' + node.Description.Hostname"></v-btn>
           </Details>
+        </template>
+        <v-card-title>
+          <v-badge :color="nodeStatus(node.Status.State)" dot inline floating :title="node.Status.State" :aria-label="'Node status: ' + node.Status.State"></v-badge>
+          <span :title="node.Description.Hostname">{{ node.Description.Hostname }}</span>
           <span v-if="node.Spec.Availability !== 'active'">({{ node.Spec.Availability }})</span>
         </v-card-title>
         <v-card-subtitle>Node id: {{ node.ID }}</v-card-subtitle>
