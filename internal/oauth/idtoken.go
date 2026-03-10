@@ -49,8 +49,19 @@ func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
 		return nil, fmt.Errorf("unauthorized")
 	}
 
-	if claims["aud"] != cfg.OAuthConfig.ClientID {
-		return nil, fmt.Errorf("ID token for a different audience: %s", claims["aud"])
+	audiences, err := claims.GetAudience()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read audience claim: %v", err)
+	}
+	validAudience := false
+	for _, aud := range audiences {
+		if aud == cfg.OAuthConfig.ClientID {
+			validAudience = true
+			break
+		}
+	}
+	if !validAudience {
+		return nil, fmt.Errorf("ID token for a different audience: %v", audiences)
 	}
 
 	return claims, nil

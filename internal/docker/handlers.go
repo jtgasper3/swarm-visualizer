@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -13,7 +14,19 @@ import (
 )
 
 var (
-	upgrader = websocket.Upgrader{}
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser clients (curl, native apps)
+			}
+			u, err := url.Parse(origin)
+			if err != nil {
+				return false
+			}
+			return u.Host == r.Host
+		},
+	}
 	clients  = make(map[*websocket.Conn]bool)
 	mu       sync.Mutex
 )
@@ -77,8 +90,7 @@ func handleBroadcasts() {
 		msg := <-broadcast
 		mu.Lock()
 		for client := range clients {
-			_, err := writeMessage(client, msg)
-			if err != nil {
+			if err := writeMessage(client, msg); err != nil {
 				delete(clients, client)
 			}
 		}
@@ -86,12 +98,11 @@ func handleBroadcasts() {
 	}
 }
 
-func writeMessage(client *websocket.Conn, msg []byte) (bool, error) {
+func writeMessage(client *websocket.Conn, msg []byte) error {
 	err := client.WriteMessage(websocket.TextMessage, msg)
 	if err != nil {
 		log.Printf("Write error; closing: %s, %v", client.RemoteAddr(), err)
 		client.Close()
 	}
-
-	return true, nil
+	return err
 }

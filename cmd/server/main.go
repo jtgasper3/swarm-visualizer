@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 	"github.com/jtgasper3/swarm-visualizer/internal/docker"
@@ -21,10 +26,24 @@ func main() {
 	docker.RegisterDockerHandlers(cfg)
 	oauth.RegisterOAuthHandlers(cfg)
 
-	listenerPort := cfg.ListenerPort
-	log.Printf("Server started on :%s", listenerPort)
-	err := http.ListenAndServe(":"+listenerPort, nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
+	server := &http.Server{Addr: ":" + cfg.ListenerPort}
+
+	go func() {
+		log.Printf("Server started on :%s", cfg.ListenerPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("ListenAndServe: ", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown: ", err)
 	}
+	log.Println("Server stopped")
 }

@@ -3,7 +3,9 @@ package config
 import (
 	"crypto/rsa"
 	"log"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -13,6 +15,7 @@ type Config struct {
 	ListenerPort       string
 	AuthEnabled        bool
 	OAuthConfig        OAuthConfig
+	TrustedProxies     []*net.IPNet
 	SensitiveDataPaths []string
 	HideAllConfigs     bool
 	HideAllEnvs        bool
@@ -31,11 +34,13 @@ type OAuthConfig struct {
 	OIDCWellKnownURL string
 	RsaPublicKeyMap  map[string]*rsa.PublicKey
 	UsernameClaim    string
+	SessionMaxAge    int
 }
 
 const (
-	defaultContextRoot  = "/"
-	defaultListenerPort = "8080"
+	defaultContextRoot    = "/"
+	defaultListenerPort   = "8080"
+	defaultSessionMaxAge  = 3600
 )
 
 func LoadConfig() *Config {
@@ -69,6 +74,40 @@ func LoadConfig() *Config {
 		sensitiveDataPaths = append(sensitiveDataPaths, strings.Split(sensitiveDataPathsEnv, ",")...)
 	}
 
+	sessionMaxAge := defaultSessionMaxAge
+	if s := os.Getenv("OIDC_SESSION_MAX_AGE"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			sessionMaxAge = v
+		} else {
+			log.Printf("Warning: invalid OIDC_SESSION_MAX_AGE %q, using default %d", s, defaultSessionMaxAge)
+		}
+	}
+
+	var trustedProxies []*net.IPNet
+	if tp := os.Getenv("TRUSTED_PROXIES"); tp != "" {
+		for _, entry := range strings.Split(tp, ",") {
+			entry = strings.TrimSpace(entry)
+			if !strings.Contains(entry, "/") {
+				ip := net.ParseIP(entry)
+				if ip == nil {
+					log.Printf("Warning: invalid trusted proxy address %q, skipping", entry)
+					continue
+				}
+				if ip.To4() != nil {
+					entry += "/32"
+				} else {
+					entry += "/128"
+				}
+			}
+			_, cidr, err := net.ParseCIDR(entry)
+			if err != nil {
+				log.Printf("Warning: invalid trusted proxy CIDR %q: %v, skipping", entry, err)
+				continue
+			}
+			trustedProxies = append(trustedProxies, cidr)
+		}
+	}
+
 	return &Config{
 		ClusterName:  os.Getenv("CLUSTER_NAME"),
 		ContextRoot:  contextRoot,
@@ -84,7 +123,9 @@ func LoadConfig() *Config {
 			OIDCWellKnownURL: os.Getenv("OIDC_WELL_KNOWN_URL"),
 			RsaPublicKeyMap:  make(map[string]*rsa.PublicKey),
 			UsernameClaim:    getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
+			SessionMaxAge:    sessionMaxAge,
 		},
+		TrustedProxies:     trustedProxies,
 		HideAllConfigs:     os.Getenv("HIDE_ALL_CONFIGS") == "true",
 		HideAllEnvs:        os.Getenv("HIDE_ALL_ENVS") == "true",
 		HideAllMounts:      os.Getenv("HIDE_ALL_MOUNTS") == "true",

@@ -1,5 +1,5 @@
 # Use the official Golang image as the build stage
-FROM golang:1.25 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 

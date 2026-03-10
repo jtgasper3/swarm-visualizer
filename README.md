@@ -61,12 +61,26 @@ OIDC Environment Variables:
 - `OIDC_CLIENT_SECRET_FILE`: path to file containing a standard OAuth client secret
 - `OIDC_REDIRECT_URL`: this app's callback url; should end in `/callback` and will be registered in the identity provider. For example, `https://myswarm.example.internal/visualizer/callback`
 - `OIDC_SCOPES`: comma separated list of scopes. For example, `openid,profile,email`
-- `OIDC_WELL_KNOWN_URL`: Location to lookup the identity provider's public signing key, token and authorization endpoints. For example, `https://auth.example.com/.well-known/openid-configuration`
-- `OIDC_USERNAME_CLAIM`: 
+- `OIDC_WELL_KNOWN_URL`: location to look up the identity provider's public signing key, token and authorization endpoints. For example, `https://auth.example.com/.well-known/openid-configuration`
+- `OIDC_AUTH_URL`: authorization endpoint URL; overrides the value from `OIDC_WELL_KNOWN_URL` if set
+- `OIDC_TOKEN_URL`: token endpoint URL; overrides the value from `OIDC_WELL_KNOWN_URL` if set
+- `OIDC_USERNAME_CLAIM`: JWT claim to use as the display username (default: `preferred_username`)
+- `OIDC_SESSION_MAX_AGE`: lifetime of the session cookie in seconds (default: `3600`)
 
 Other Environment Variables:
 
 - `DOCKER_API_VERSION`: adjust the Docker api version if the server needs it. (default: `(negotiated)`)
+- `TRUSTED_PROXIES`: comma-separated list of trusted reverse-proxy IP addresses or CIDR ranges. When set, the `X-Real-IP` and `X-Forwarded-For` headers are trusted for rate limiting purposes when the direct connection originates from a listed address. Plain IPs are accepted alongside CIDR notation (e.g. `10.0.0.0/8,192.168.1.5`). **Only set this if the application port is not directly reachable by untrusted clients**, otherwise clients can spoof their IP to bypass rate limits.
+
+### Reverse Proxy Considerations
+
+When running behind a reverse proxy (such as Traefik or nginx), set `TRUSTED_PROXIES` to the proxy's IP or subnet and `CONTEXT_ROOT` to the path prefix if the app is not served from `/`. For example:
+
+```yaml
+environment:
+  CONTEXT_ROOT: /visualizer/
+  TRUSTED_PROXIES: 10.0.0.0/8
+```
 
 ## Data Sanitization
 
