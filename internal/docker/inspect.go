@@ -156,7 +156,8 @@ func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) (
 		if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateComplete {
 			if entry, exists := stoppedTaskCache[t.ID]; exists {
 				stoppedTaskCache[t.ID] = cachedTask{task: t, firstSeen: entry.firstSeen}
-			} else {
+			} else if now.Sub(t.UpdatedAt) < failedTaskGracePeriod {
+				// Only cache tasks that stopped recently; skip historical tasks.
 				stoppedTaskCache[t.ID] = cachedTask{task: t, firstSeen: now}
 			}
 		}
