@@ -3,8 +3,8 @@ package docker
 import (
 	"testing"
 
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/swarm"
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 

@@ -13,10 +13,9 @@ import (
 	"github.com/jtgasper3/swarm-visualizer/internal"
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 )
 
 type SwarmData struct {
@@ -91,11 +90,12 @@ func inspectSwarmServices(cfg *config.Config) {
 }
 
 func getNetworksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]network.Summary, error) {
-	networks, err := cli.NetworkList(ctx, network.ListOptions{Filters: filters.NewArgs(filters.KeyValuePair{Key: "scope", Value: "swarm"})})
+	result, err := cli.NetworkList(ctx, client.NetworkListOptions{Filters: make(client.Filters).Add("scope", "swarm")})
 	if err != nil {
 		log.Printf("Error fetching networks: %v", err)
 		return nil, err
 	}
+	networks := result.Items
 
 	filteredNetworks := make([]network.Summary, 0, len(networks))
 	for _, net := range networks {
@@ -113,27 +113,27 @@ func getNetworksInfo(ctx context.Context, cli *client.Client, cfg *config.Config
 }
 
 func getNodesInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Node, error) {
-	nodes, err := cli.NodeList(ctx, swarm.NodeListOptions{})
+	result, err := cli.NodeList(ctx, client.NodeListOptions{})
 	if err != nil {
 		log.Printf("Error fetching nodes: %v", err)
 		return nil, err
 	}
 
 	// Sanitize nodes
-	nodes = sanitizeNodes(nodes, cfg)
+	nodes := sanitizeNodes(result.Items, cfg)
 
 	return nodes, nil
 }
 
 func getServicesInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Service, error) {
-	services, err := cli.ServiceList(ctx, swarm.ServiceListOptions{})
+	result, err := cli.ServiceList(ctx, client.ServiceListOptions{})
 	if err != nil {
 		log.Printf("Error fetching services: %v", err)
 		return nil, err
 	}
 
 	// Sanitize services
-	services = sanitizeServices(services, cfg)
+	services := sanitizeServices(result.Items, cfg)
 
 	return services, nil
 }
@@ -141,11 +141,12 @@ func getServicesInfo(ctx context.Context, cli *client.Client, cfg *config.Config
 const failedTaskGracePeriod = 30 * time.Second
 
 func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Task, error) {
-	tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{})
+	taskList, err := cli.TaskList(ctx, client.TaskListOptions{})
 	if err != nil {
 		log.Printf("Error fetching tasks: %v", err)
 		return nil, err
 	}
+	tasks := taskList.Items
 
 	now := time.Now()
 
