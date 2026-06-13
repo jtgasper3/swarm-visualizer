@@ -3,8 +3,6 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -194,61 +192,41 @@ func fetchWellKnownOIDCConfig(cfg *config.Config) error {
 	}
 	defer resp.Body.Close()
 
-	var config struct {
+	var discovery struct {
+		Issuer   string `json:"issuer"`
 		TokenUrl string `json:"token_endpoint"`
 		AuthUrl  string `json:"authorization_endpoint"`
 		JWKSURI  string `json:"jwks_uri"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
 		return fmt.Errorf("failed to decode well-known configuration: %v", err)
 	}
 
+	if discovery.Issuer != "" {
+		cfg.OAuthConfig.Issuer = discovery.Issuer
+	} else {
+		log.Printf("Warning: well-known configuration provided no issuer; ID token issuer validation is disabled")
+	}
+
 	if cfg.OAuthConfig.AuthURL == "" {
-		log.Printf("Using Authorization Endpoint from well-known config %s", config.AuthUrl)
-		cfg.OAuthConfig.AuthURL = config.AuthUrl
+		log.Printf("Using Authorization Endpoint from well-known config %s", discovery.AuthUrl)
+		cfg.OAuthConfig.AuthURL = discovery.AuthUrl
 	}
 	if cfg.OAuthConfig.TokenURL == "" {
-		log.Printf("Using Token Endpoint from well-known config %s", config.TokenUrl)
-		cfg.OAuthConfig.TokenURL = config.TokenUrl
+		log.Printf("Using Token Endpoint from well-known config %s", discovery.TokenUrl)
+		cfg.OAuthConfig.TokenURL = discovery.TokenUrl
 	}
 
-	jwksResp, err := httpClient.Get(config.JWKSURI)
-	if err != nil {
-		return fmt.Errorf("failed to fetch JWKS: %v", err)
-	}
-	defer jwksResp.Body.Close()
-
-	var jwks struct {
-		Keys []struct {
-			Kty string   `json:"kty"`
-			Kid string   `json:"kid"`
-			Use string   `json:"use"`
-			N   string   `json:"n"`
-			E   string   `json:"e"`
-			X5c []string `json:"x5c"`
-		} `json:"keys"`
-	}
-	if err := json.NewDecoder(jwksResp.Body).Decode(&jwks); err != nil {
-		return fmt.Errorf("failed to decode JWKS: %v", err)
+	if discovery.JWKSURI == "" {
+		return fmt.Errorf("well-known configuration provided no jwks_uri")
 	}
 
-	for _, key := range jwks.Keys {
-		if len(key.X5c) == 0 {
-			log.Printf("Skipping JWKS key %s: no x5c certificate data", key.Kid)
-			continue
-		}
-		certData, err := base64.StdEncoding.DecodeString(key.X5c[0])
-		if err != nil {
-			return fmt.Errorf("failed to decode certificate: %v", err)
-		}
-
-		cert, err := x509.ParseCertificate(certData)
-		if err != nil {
-			return fmt.Errorf("failed to parse certificate: %v", err)
-		}
-
-		cfg.OAuthConfig.RsaPublicKeyMap[key.Kid] = cert.PublicKey.(*rsa.PublicKey)
+	signingKeys = newKeyStore(discovery.JWKSURI, httpClient)
+	if err := signingKeys.refresh(); err != nil {
+		return err
 	}
+	go signingKeys.refreshLoop()
+
 	return nil
 }
 

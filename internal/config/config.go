@@ -1,7 +1,6 @@
 package config
 
 import (
-	"crypto/rsa"
 	"log"
 	"net"
 	"os"
@@ -32,15 +31,15 @@ type OAuthConfig struct {
 	AuthURL          string
 	TokenURL         string
 	OIDCWellKnownURL string
-	RsaPublicKeyMap  map[string]*rsa.PublicKey
+	Issuer           string
 	UsernameClaim    string
 	SessionMaxAge    int
 }
 
 const (
-	defaultContextRoot    = "/"
-	defaultListenerPort   = "8080"
-	defaultSessionMaxAge  = 3600
+	defaultContextRoot   = "/"
+	defaultListenerPort  = "8080"
+	defaultSessionMaxAge = 3600
 )
 
 func LoadConfig() *Config {
@@ -121,7 +120,6 @@ func LoadConfig() *Config {
 			AuthURL:          os.Getenv("OIDC_AUTH_URL"),
 			TokenURL:         os.Getenv("OIDC_TOKEN_URL"),
 			OIDCWellKnownURL: os.Getenv("OIDC_WELL_KNOWN_URL"),
-			RsaPublicKeyMap:  make(map[string]*rsa.PublicKey),
 			UsernameClaim:    getEnv("OIDC_USERNAME_CLAIM", "preferred_username"),
 			SessionMaxAge:    sessionMaxAge,
 		},

@@ -33,7 +33,10 @@ func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
 			return nil, fmt.Errorf("missing kid in token header")
 		}
 
-		rsaPublicKey, ok := cfg.OAuthConfig.RsaPublicKeyMap[kid]
+		if signingKeys == nil {
+			return nil, fmt.Errorf("signing keys not initialized")
+		}
+		rsaPublicKey, ok := signingKeys.key(kid)
 		if !ok {
 			return nil, fmt.Errorf("unknown kid: %s", kid)
 		}
@@ -47,6 +50,16 @@ func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("unauthorized")
+	}
+
+	if cfg.OAuthConfig.Issuer != "" {
+		issuer, err := claims.GetIssuer()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read issuer claim: %v", err)
+		}
+		if issuer != cfg.OAuthConfig.Issuer {
+			return nil, fmt.Errorf("ID token from unexpected issuer: %s", issuer)
+		}
 	}
 
 	audiences, err := claims.GetAudience()

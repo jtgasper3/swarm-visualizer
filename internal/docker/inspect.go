@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jtgasper3/swarm-visualizer/internal"
@@ -32,8 +33,10 @@ type cachedTask struct {
 }
 
 var (
-	broadcast           = make(chan []byte)
-	lastBroadcastedData *SwarmData
+	broadcast = make(chan []byte)
+	// lastBroadcastedData is read by WebSocket handler goroutines while the
+	// single inspectSwarmServices goroutine swaps it, so access is atomic.
+	lastBroadcastedData atomic.Pointer[SwarmData]
 	// stoppedTaskCache is only accessed from the single inspectSwarmServices goroutine.
 	stoppedTaskCache = make(map[string]cachedTask)
 )
@@ -74,8 +77,8 @@ func inspectSwarmServices(cfg *config.Config) {
 			}
 		}
 
-		if lastBroadcastedData == nil || !reflect.DeepEqual(data, *lastBroadcastedData) {
-			lastBroadcastedData = &data
+		if prev := lastBroadcastedData.Load(); prev == nil || !reflect.DeepEqual(data, *prev) {
+			lastBroadcastedData.Store(&data)
 			jsonBytes, err := json.Marshal(data)
 			if err != nil {
 				log.Println("Error marshalling combined data:", err)

@@ -27,8 +27,8 @@ var (
 			return u.Host == r.Host
 		},
 	}
-	clients  = make(map[*websocket.Conn]bool)
-	mu       sync.Mutex
+	clients = make(map[*websocket.Conn]bool)
+	mu      sync.Mutex
 )
 
 func RegisterDockerHandlers(cfg *config.Config) {
@@ -62,7 +62,7 @@ func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Reques
 		log.Printf("Client connected: %s", r.RemoteAddr)
 	}
 
-	jsonBytes, err := json.Marshal(lastBroadcastedData)
+	jsonBytes, err := json.Marshal(lastBroadcastedData.Load())
 	if err != nil {
 		log.Println("Error marshalling combined data:", err)
 
