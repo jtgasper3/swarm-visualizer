@@ -26,6 +26,9 @@ services:
     secrets:
       - client_secret
     volumes:
+      # Direct socket mount is root-equivalent host access. For production, front
+      # it with a read-only socket proxy instead — see "Security Considerations"
+      # in the README.
       - /var/run/docker.sock:/var/run/docker.sock
     
 secrets:

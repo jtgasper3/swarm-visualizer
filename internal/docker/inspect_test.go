@@ -3,9 +3,9 @@ package docker
 import (
 	"testing"
 
+	"github.com/jtgasper3/swarm-visualizer/internal/config"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/swarm"
-	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
 func TestSanitizeNodes_HideLabels(t *testing.T) {

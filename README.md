@@ -43,6 +43,8 @@ service:
       - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+> The examples above mount the Docker socket directly for simplicity. The socket is root-equivalent on the host and grants full control of the swarm — see [Security Considerations](#security-considerations) for a hardened, read-only setup before exposing this app.
+
 ## Configuration
 
 General Environment Variables:
@@ -94,6 +96,67 @@ The Docker API can expose potentially sensitive information. There are several m
 - To manage things on a service by service level, use labels on the desired service (with `io.github.jtgasper3.visualizer.hide-labels`) and environment variables (`io.github.jtgasper3.visualizer.hide-envs`) to specify a comma separated list of label or environment variables to remove from the service's specific labels or environment variable values from the output. The value is changes to "(sanitized)".
 
 For very granular control over uses that we didn't consider, use the environment variable of `SENSITIVE_DATA_PATHS` and a comma separated list of paths to remove. Examine the JSON output and find and specify the path to remove. Use `*` for arrays, and use single quotes to delimit values of property names that have embedded periods (i.e. `services.*.Spec.TaskTemplate.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source'`).
+
+
+## Security Considerations
+
+Securing a deployment is the operator's responsibility. The two items below have the largest impact and are not handled by the application itself.
+
+### Restrict access to the Docker socket
+
+This app reads cluster state from the Docker Engine API. Mounting `/var/run/docker.sock` directly (as the Usage examples do for brevity) hands the container full, **root-equivalent** control of the host and the entire swarm. The app only ever performs *read* operations (listing nodes, services, tasks, and networks), so it does not need that level of access.
+
+For anything beyond local development, place a read-only socket proxy between the app and the Docker socket and grant it only the endpoints this app uses. The app honors the standard `DOCKER_HOST` variable, so point it at the proxy and drop the socket mount entirely:
+
+```yaml
+services:
+  dockerproxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    environment:
+      # Grant only the read endpoints this app needs; everything else stays denied,
+      # and the proxy rejects all write (POST/PUT/DELETE) calls by default.
+      NODES: 1
+      SERVICES: 1
+      TASKS: 1
+      NETWORKS: 1
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager   # swarm reads must run on a manager
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - viz
+
+  viz:
+    image: jtgasper3/swarm-visualizer:latest
+    environment:
+      CLUSTER_NAME: Dev Cluster
+      DOCKER_HOST: tcp://dockerproxy:2375
+    ports:
+      - 8080:8080
+    networks:
+      - viz
+    # No docker.sock mount and no manager constraint needed on the app itself —
+    # only the proxy talks to the socket and must run on a manager.
+
+networks:
+  viz:
+    driver: overlay
+```
+
+With this setup the application can no longer issue write commands to the daemon, so a compromise of the app cannot be escalated into control of the cluster.
+
+### Authentication is not authorization
+
+Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies that a request carries a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
+
+To control *who* may access the app, restrict it at the boundaries:
+
+- **At the identity provider** — assign an application role, or limit the app registration / enterprise application to specific users or groups, so the IdP only issues tokens to intended users.
+- **At a reverse proxy** — enforce an allow-list or forward-auth policy in front of the app.
+
+Combine access control with the *Data Sanitization* options above to limit what authenticated users can see (environment variables, mount sources, configs, and labels are exposed unless hidden).
 
 
 ## Development/Testing
