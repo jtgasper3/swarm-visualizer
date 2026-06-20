@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/moby/moby/api v1.54.2
+	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.4.1
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/time v0.15.0
