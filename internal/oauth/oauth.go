@@ -88,13 +88,14 @@ func cleanupAuthLimiters() {
 
 func RegisterOAuthHandlers(cfg *config.Config) {
 	if cfg.AuthEnabled {
-		oauthConfig = setupOAuthConfig(&cfg.OAuthConfig)
-
-		// Fetch and parse the well-known oidc config
+		// Fetch and parse the well-known OIDC config before building the
+		// oauth2.Config so discovered auth/token endpoints are included.
 		err := fetchWellKnownOIDCConfig(cfg)
 		if err != nil {
 			log.Fatalf("Failed to fetch JWKS: %v", err)
 		}
+
+		oauthConfig = setupOAuthConfig(&cfg.OAuthConfig)
 
 		go cleanupAuthLimiters()
 
