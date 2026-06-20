@@ -14,7 +14,37 @@ func resetClientState(t *testing.T) {
 		clients = make(map[*wsClient]struct{})
 		clientsMu.Unlock()
 		lastBroadcastedJSON.Store(nil)
+		maxClients = 0
 	})
+}
+
+// TestRegisterClient_EnforcesCap verifies the concurrent connection cap.
+func TestRegisterClient_EnforcesCap(t *testing.T) {
+	resetClientState(t)
+	maxClients = 2
+
+	c1 := &wsClient{send: make(chan []byte, 1)}
+	c2 := &wsClient{send: make(chan []byte, 1)}
+	c3 := &wsClient{send: make(chan []byte, 1)}
+
+	if !registerClient(c1) || !registerClient(c2) {
+		t.Fatal("expected the first two clients to register")
+	}
+	if registerClient(c3) {
+		t.Fatal("expected the third client to be rejected at capacity")
+	}
+	if atClientCapacity() != true {
+		t.Fatal("expected atClientCapacity to report full")
+	}
+
+	// Freeing a slot allows a new client in.
+	unregisterClient(c1)
+	if atClientCapacity() {
+		t.Fatal("expected capacity after unregister")
+	}
+	if !registerClient(c3) {
+		t.Fatal("expected registration to succeed after a slot freed")
+	}
 }
 
 // TestRegisterClient_SeedsLatestSnapshot verifies a newly registered client is

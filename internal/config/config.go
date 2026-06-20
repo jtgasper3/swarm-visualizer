@@ -21,6 +21,7 @@ type Config struct {
 	HideAllMounts      bool
 	HideAllSecrets     bool
 	HideLabels         []string
+	MaxWSConnections   int
 }
 
 type OAuthConfig struct {
@@ -37,9 +38,10 @@ type OAuthConfig struct {
 }
 
 const (
-	defaultContextRoot   = "/"
-	defaultListenerPort  = "8080"
-	defaultSessionMaxAge = 3600
+	defaultContextRoot      = "/"
+	defaultListenerPort     = "8080"
+	defaultSessionMaxAge    = 3600
+	defaultMaxWSConnections = 256
 )
 
 func LoadConfig() *Config {
@@ -79,6 +81,15 @@ func LoadConfig() *Config {
 			sessionMaxAge = v
 		} else {
 			log.Printf("Warning: invalid OIDC_SESSION_MAX_AGE %q, using default %d", s, defaultSessionMaxAge)
+		}
+	}
+
+	maxWSConnections := defaultMaxWSConnections
+	if s := os.Getenv("MAX_WS_CONNECTIONS"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			maxWSConnections = v
+		} else {
+			log.Printf("Warning: invalid MAX_WS_CONNECTIONS %q, using default %d", s, defaultMaxWSConnections)
 		}
 	}
 
@@ -130,6 +141,7 @@ func LoadConfig() *Config {
 		HideAllSecrets:     os.Getenv("HIDE_ALL_SECRETS") == "true",
 		HideLabels:         strings.Split(os.Getenv("HIDE_ALL_LABELS"), ","),
 		SensitiveDataPaths: sensitiveDataPaths,
+		MaxWSConnections:   maxWSConnections,
 	}
 }
 

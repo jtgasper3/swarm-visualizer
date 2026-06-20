@@ -52,6 +52,7 @@ General Environment Variables:
 - `CLUSTER_NAME`: title to display on the main page
 - `CONTEXT_ROOT`: the context root of the web app; useful when working with reverse-proxies (default: `/`)
 - `LISTENER_PORT`: port to listen on (default: `8080`)
+- `MAX_WS_CONNECTIONS`: maximum number of concurrent WebSocket (dashboard) connections; further connections are rejected until a slot frees up (default: `256`)
 - `HIDE_ALL_CONFIGS`: hides all configs values (default: `false`)
 - `HIDE_ALL_ENVS`: hides all environment variables values (default: `false`)
 - `HIDE_ALL_MOUNTS`: hides all mounts values (default: `false`)

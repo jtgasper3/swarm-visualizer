@@ -29,6 +29,10 @@ var (
 	}
 	clientsMu sync.Mutex
 	clients   = make(map[*wsClient]struct{})
+	// maxClients caps the number of concurrent WebSocket connections to bound
+	// resource use. 0 means unlimited; it is set from config in
+	// RegisterDockerHandlers.
+	maxClients int
 )
 
 const wsWriteTimeout = 5 * time.Second
@@ -44,6 +48,8 @@ type wsClient struct {
 }
 
 func RegisterDockerHandlers(cfg *config.Config) {
+	maxClients = cfg.MaxWSConnections
+
 	go inspectSwarmServices(cfg)
 	go handleBroadcasts()
 
@@ -54,6 +60,14 @@ func RegisterDockerHandlers(cfg *config.Config) {
 }
 
 func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
+	// Shed load before the WebSocket handshake when already at capacity. This
+	// is best effort; registerClient performs the authoritative check.
+	if atClientCapacity() {
+		http.Error(w, "Too many connections", http.StatusServiceUnavailable)
+		log.Printf("Connection rejected, server at capacity (%d): %s", maxClients, r.RemoteAddr)
+		return
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade error:", err)
@@ -77,7 +91,12 @@ func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Reques
 
 	c := &wsClient{conn: ws, send: make(chan []byte, 1)}
 
-	registerClient(c)
+	if !registerClient(c) {
+		// Capacity was reached between the pre-upgrade check and here.
+		log.Printf("Connection rejected, server at capacity (%d): %s", maxClients, r.RemoteAddr)
+		ws.Close()
+		return
+	}
 	go c.writePump()
 
 	// Read loop: we don't expect inbound messages, but reading is how a
@@ -106,9 +125,26 @@ func (c *wsClient) writePump() {
 	c.conn.Close()
 }
 
-func registerClient(c *wsClient) {
+// atClientCapacity reports whether the concurrent connection limit is reached.
+func atClientCapacity() bool {
+	if maxClients <= 0 {
+		return false
+	}
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
+	return len(clients) >= maxClients
+}
+
+// registerClient adds the client to the registry and seeds it with the latest
+// snapshot, all under the broadcast lock. It returns false (registering
+// nothing) if the concurrent connection cap is reached.
+func registerClient(c *wsClient) bool {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+
+	if maxClients > 0 && len(clients) >= maxClients {
+		return false
+	}
 	clients[c] = struct{}{}
 
 	// Seed the latest snapshot, if one exists, under the same lock that guards
@@ -119,6 +155,7 @@ func registerClient(c *wsClient) {
 	if b := lastBroadcastedJSON.Load(); b != nil {
 		c.send <- *b
 	}
+	return true
 }
 
 func unregisterClient(c *wsClient) {
