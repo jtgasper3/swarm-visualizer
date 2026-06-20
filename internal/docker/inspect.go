@@ -33,7 +33,7 @@ type cachedTask struct {
 }
 
 var (
-	broadcast = make(chan []byte)
+	broadcast = make(chan []byte, 1)
 	// lastBroadcastedData is read by WebSocket handler goroutines while the
 	// single inspectSwarmServices goroutine swaps it, so access is atomic.
 	lastBroadcastedData atomic.Pointer[SwarmData]

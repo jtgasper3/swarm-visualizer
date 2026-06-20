@@ -26,7 +26,11 @@ func main() {
 	docker.RegisterDockerHandlers(cfg)
 	oauth.RegisterOAuthHandlers(cfg)
 
-	server := &http.Server{Addr: ":" + cfg.ListenerPort}
+	server := &http.Server{
+		Addr:              ":" + cfg.ListenerPort,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      90 * time.Second,
+	}
 
 	go func() {
 		log.Printf("Server started on :%s", cfg.ListenerPort)
