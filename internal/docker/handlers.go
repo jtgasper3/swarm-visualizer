@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -27,9 +28,11 @@ var (
 			return u.Host == r.Host
 		},
 	}
-	clients = make(map[*websocket.Conn]bool)
-	mu      sync.Mutex
+	clients   = make(map[*websocket.Conn]bool)
+	mu        sync.Mutex
 )
+
+const wsWriteTimeout = 5 * time.Second
 
 func RegisterDockerHandlers(cfg *config.Config) {
 	go inspectSwarmServices(cfg)
@@ -99,6 +102,7 @@ func handleBroadcasts() {
 }
 
 func writeMessage(client *websocket.Conn, msg []byte) error {
+	client.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 	err := client.WriteMessage(websocket.TextMessage, msg)
 	if err != nil {
 		log.Printf("Write error; closing: %s, %v", client.RemoteAddr(), err)
