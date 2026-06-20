@@ -69,9 +69,7 @@ func LoadConfig() *Config {
 		"tasks.*.Spec.ContainerSpec.Mounts.*.Source",
 	}
 
-	if sensitiveDataPathsEnv := os.Getenv("SENSITIVE_DATA_PATHS"); sensitiveDataPathsEnv != "" {
-		sensitiveDataPaths = append(sensitiveDataPaths, strings.Split(sensitiveDataPathsEnv, ",")...)
-	}
+	sensitiveDataPaths = append(sensitiveDataPaths, splitList(os.Getenv("SENSITIVE_DATA_PATHS"))...)
 
 	sessionMaxAge := defaultSessionMaxAge
 	if s := os.Getenv("OIDC_SESSION_MAX_AGE"); s != "" {
@@ -116,7 +114,7 @@ func LoadConfig() *Config {
 			ClientID:         os.Getenv("OIDC_CLIENT_ID"),
 			ClientSecret:     strings.TrimSpace(clientSecret),
 			RedirectURL:      os.Getenv("OIDC_REDIRECT_URL"),
-			Scopes:           strings.Split(os.Getenv("OIDC_SCOPES"), ","),
+			Scopes:           splitList(os.Getenv("OIDC_SCOPES")),
 			AuthURL:          os.Getenv("OIDC_AUTH_URL"),
 			TokenURL:         os.Getenv("OIDC_TOKEN_URL"),
 			OIDCWellKnownURL: os.Getenv("OIDC_WELL_KNOWN_URL"),
@@ -128,7 +126,7 @@ func LoadConfig() *Config {
 		HideAllEnvs:        os.Getenv("HIDE_ALL_ENVS") == "true",
 		HideAllMounts:      os.Getenv("HIDE_ALL_MOUNTS") == "true",
 		HideAllSecrets:     os.Getenv("HIDE_ALL_SECRETS") == "true",
-		HideLabels:         strings.Split(os.Getenv("HIDE_LABELS"), ","),
+		HideLabels:         splitList(os.Getenv("HIDE_LABELS")),
 		SensitiveDataPaths: sensitiveDataPaths,
 	}
 }
@@ -155,4 +153,17 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// splitList parses a comma-separated value into a slice, trimming whitespace
+// and dropping empty entries. An empty or all-whitespace input yields nil
+// rather than a one-element slice containing an empty string.
+func splitList(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
