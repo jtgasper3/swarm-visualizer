@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -113,6 +114,9 @@ func RegisterOAuthHandlers(cfg *config.Config) {
 			}
 			handleCallback(cfg, w, r)
 		})
+		http.HandleFunc(cfg.ContextRoot+"logout", func(w http.ResponseWriter, r *http.Request) {
+			handleLogout(cfg, w, r)
+		})
 	}
 }
 
@@ -135,23 +139,25 @@ func handleLogin(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to generate state: %v", err), http.StatusInternalServerError)
 		return
 	}
+	nonce, err := generateSecureRandomString(32)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to generate nonce: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	url := oauthConfig.AuthCodeURL(state)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "nonce",
-		Value:    state,
-		Path:     cfg.ContextRoot,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	// state binds the callback to this browser (CSRF); nonce binds the issued
+	// ID token to this login flow (replay protection) and is validated against
+	// the token's nonce claim in the callback.
+	url := oauthConfig.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce))
+	setFlowCookie(cfg, w, "state", state)
+	setFlowCookie(cfg, w, "nonce", nonce)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
 func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
-	nonceCookie, err := r.Cookie("nonce")
-	if err != nil || nonceCookie.Value != r.URL.Query().Get("state") {
-		clearNonceCookie(cfg, w)
+	stateCookie, err := r.Cookie("state")
+	if err != nil || subtle.ConstantTimeCompare([]byte(stateCookie.Value), []byte(r.URL.Query().Get("state"))) != 1 {
+		clearFlowCookies(cfg, w)
 		http.Error(w, "Invalid state", http.StatusBadRequest)
 		return
 	}
@@ -159,17 +165,42 @@ func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) 
 	code := r.URL.Query().Get("code")
 	token, err := oauthConfig.Exchange(context.Background(), code)
 	if err != nil {
+		clearFlowCookies(cfg, w)
 		http.Error(w, fmt.Sprintf("Failed to exchange token: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
+		clearFlowCookies(cfg, w)
 		http.Error(w, "No id_token found", http.StatusInternalServerError)
 		return
 	}
 
-	clearNonceCookie(cfg, w)
+	// Validate the ID token and bind it to this login flow via the nonce, so a
+	// token captured or replayed from a different flow cannot be used here.
+	claims, err := validateRawToken(cfg, rawIDToken)
+	if err != nil {
+		clearFlowCookies(cfg, w)
+		log.Printf("Callback ID token validation failed: %s %v", r.RemoteAddr, err)
+		http.Error(w, "Invalid ID token", http.StatusUnauthorized)
+		return
+	}
+	nonceCookie, err := r.Cookie("nonce")
+	if err != nil {
+		clearFlowCookies(cfg, w)
+		http.Error(w, "Missing nonce", http.StatusBadRequest)
+		return
+	}
+	tokenNonce, _ := claims["nonce"].(string)
+	if tokenNonce == "" || subtle.ConstantTimeCompare([]byte(tokenNonce), []byte(nonceCookie.Value)) != 1 {
+		clearFlowCookies(cfg, w)
+		log.Printf("Callback nonce mismatch: %s", r.RemoteAddr)
+		http.Error(w, "Invalid nonce", http.StatusBadRequest)
+		return
+	}
+
+	clearFlowCookies(cfg, w)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "id_token",
@@ -231,16 +262,51 @@ func fetchWellKnownOIDCConfig(cfg *config.Config) error {
 	return nil
 }
 
-func clearNonceCookie(cfg *config.Config, w http.ResponseWriter) {
+// handleLogout clears the session cookie and returns the user to the app,
+// which will then prompt for login again. This is a local logout; it does not
+// terminate the session at the identity provider.
+func handleLogout(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "nonce",
+		Name:     "id_token",
 		Value:    "",
 		Path:     cfg.ContextRoot,
 		HttpOnly: true,
 		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 	})
+	http.Redirect(w, r, cfg.ContextRoot, http.StatusTemporaryRedirect)
+}
+
+// setFlowCookie sets a short-lived cookie used during the OAuth redirect flow.
+// SameSite=Lax so it survives the top-level redirect back from the identity
+// provider.
+func setFlowCookie(cfg *config.Config, w http.ResponseWriter, name, value string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     cfg.ContextRoot,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearFlowCookies expires the state and nonce cookies set during login.
+func clearFlowCookies(cfg *config.Config, w http.ResponseWriter) {
+	for _, name := range []string{"state", "nonce"} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     cfg.ContextRoot,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Unix(0, 0),
+			MaxAge:   -1,
+		})
+	}
 }
 
 func generateSecureRandomString(length int) (string, error) {

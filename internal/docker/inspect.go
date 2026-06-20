@@ -21,6 +21,7 @@ import (
 
 type SwarmData struct {
 	ClusterName string            `json:"clusterName"`
+	AuthEnabled bool              `json:"authEnabled"`
 	Networks    []network.Summary `json:"networks"`
 	Nodes       []swarm.Node      `json:"nodes"`
 	Services    []swarm.Service   `json:"services"`
@@ -64,6 +65,7 @@ func inspectSwarmServices(cfg *config.Config) {
 
 		data := SwarmData{
 			ClusterName: cfg.ClusterName,
+			AuthEnabled: cfg.AuthEnabled,
 			Services:    services,
 			Nodes:       nodes,
 			Networks:    networks,

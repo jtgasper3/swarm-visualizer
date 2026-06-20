@@ -23,6 +23,13 @@ func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
 		rawIDToken = cookie.Value
 	}
 
+	return validateRawToken(cfg, rawIDToken)
+}
+
+// validateRawToken verifies an ID token's signature, issuer, and audience and
+// returns its claims. It is shared by the WebSocket request path and the OAuth
+// callback (which additionally checks the nonce).
+func validateRawToken(cfg *config.Config, rawIDToken string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(rawIDToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])

@@ -72,6 +72,8 @@ OIDC Environment Variables:
 - `OIDC_USERNAME_CLAIM`: JWT claim to use as the display username (default: `preferred_username`)
 - `OIDC_SESSION_MAX_AGE`: lifetime of the session cookie in seconds (default: `3600`)
 
+The login flow protects against CSRF with a `state` parameter and against token replay with a `nonce` (validated against the ID token's `nonce` claim in the callback). When authentication is enabled the app exposes a `<CONTEXT_ROOT>logout` endpoint (and a logout button in the UI) that clears the local session cookie. This is a *local* logout only — it does not call the identity provider's end-session endpoint, so an existing IdP session may sign the user straight back in.
+
 Other Environment Variables:
 
 - `DOCKER_API_VERSION`: adjust the Docker api version if the server needs it. (default: `(negotiated)`)
