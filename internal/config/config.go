@@ -128,7 +128,7 @@ func LoadConfig() *Config {
 		HideAllEnvs:        os.Getenv("HIDE_ALL_ENVS") == "true",
 		HideAllMounts:      os.Getenv("HIDE_ALL_MOUNTS") == "true",
 		HideAllSecrets:     os.Getenv("HIDE_ALL_SECRETS") == "true",
-		HideLabels:         strings.Split(os.Getenv("HIDE_ALL_LABELS"), ","),
+		HideLabels:         strings.Split(os.Getenv("HIDE_LABELS"), ","),
 		SensitiveDataPaths: sensitiveDataPaths,
 	}
 }
