@@ -326,12 +326,12 @@
         const debouncedFilterText = refDebounced(computed(() => filters.value.filterText), 250);
         const debouncedFilters = computed(() => ({ ...filters.value, filterText: debouncedFilterText.value }));
 
-        const sortedNetworks = computed(() => networks.value.sort((a, b) => a.Name.localeCompare(b.Name)));
-        const sortedNodes = computed(() => nodes.value.sort((a, b) => a.Description.Hostname.localeCompare(b.Description.Hostname)));
+        const sortedNetworks = computed(() => [...networks.value].sort((a, b) => a.Name.localeCompare(b.Name)));
+        const sortedNodes = computed(() => [...nodes.value].sort((a, b) => a.Description.Hostname.localeCompare(b.Description.Hostname)));
         const sortedServicesGroups = computed(() => {
           const stackMap = new Map();
           
-          services.value
+          [...services.value]
           .sort((a, b) => a.Spec.Name.localeCompare(b.Spec.Name))
           .forEach(service => {
             const stackName = service.Spec.Labels?.['com.docker.stack.namespace'] || 'default';

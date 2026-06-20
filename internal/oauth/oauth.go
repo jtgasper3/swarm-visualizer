@@ -156,8 +156,13 @@ func handleCallback(cfg *config.Config, w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Bound the token exchange so a hung or slow IdP token endpoint cannot tie
+	// up the request indefinitely.
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	code := r.URL.Query().Get("code")
-	token, err := oauthConfig.Exchange(context.Background(), code)
+	token, err := oauthConfig.Exchange(ctx, code)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to exchange token: %v", err), http.StatusInternalServerError)
 		return
