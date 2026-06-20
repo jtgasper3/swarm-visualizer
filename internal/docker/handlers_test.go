@@ -5,6 +5,55 @@ import (
 	"time"
 )
 
+// resetClientState clears the package-level client registry and seed snapshot
+// so a test starts from a known state.
+func resetClientState(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		clientsMu.Lock()
+		clients = make(map[*wsClient]struct{})
+		clientsMu.Unlock()
+		lastBroadcastedJSON.Store(nil)
+	})
+}
+
+// TestRegisterClient_SeedsLatestSnapshot verifies a newly registered client is
+// seeded with the most recent snapshot.
+func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
+	resetClientState(t)
+
+	payload := []byte(`{"clusterName":"test"}`)
+	lastBroadcastedJSON.Store(&payload)
+
+	c := &wsClient{send: make(chan []byte, 1)}
+	registerClient(c)
+
+	select {
+	case got := <-c.send:
+		if string(got) != string(payload) {
+			t.Fatalf("got %q, want %q", got, payload)
+		}
+	default:
+		t.Fatal("expected the latest snapshot to be seeded, got none")
+	}
+}
+
+// TestRegisterClient_NoSeedBeforeFirstSnapshot verifies that a client that
+// connects before any data has been produced is not sent a "null" frame.
+func TestRegisterClient_NoSeedBeforeFirstSnapshot(t *testing.T) {
+	resetClientState(t)
+	lastBroadcastedJSON.Store(nil)
+
+	c := &wsClient{send: make(chan []byte, 1)}
+	registerClient(c)
+
+	select {
+	case got := <-c.send:
+		t.Fatalf("expected no seed frame before first snapshot, got %q", got)
+	default:
+	}
+}
+
 // TestEnqueue_EmptyBuffer verifies a message lands in an empty send buffer.
 func TestEnqueue_EmptyBuffer(t *testing.T) {
 	c := &wsClient{send: make(chan []byte, 1)}

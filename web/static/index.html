@@ -416,6 +416,7 @@
         }
 
         function updateReceivedData(data) {
+          if (!data) return;
           clusterName.value = data.clusterName;
 
           networks.value = data.networks;

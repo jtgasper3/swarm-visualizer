@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"net/url"
@@ -34,7 +33,7 @@ var (
 
 const wsWriteTimeout = 5 * time.Second
 
-// client is a single WebSocket connection. All writes to conn happen on its
+// wsClient is a single WebSocket connection. All writes to conn happen on its
 // writePump goroutine. send is a depth-1 buffer holding the latest pending
 // snapshot: the broadcaster never blocks on a slow client, and a client that
 // falls behind receives the most recent state rather than a backlog of stale
@@ -78,14 +77,6 @@ func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Reques
 
 	c := &wsClient{conn: ws, send: make(chan []byte, 1)}
 
-	// Seed the connection with the latest known state so it renders
-	// immediately rather than waiting for the next change.
-	if jsonBytes, err := json.Marshal(lastBroadcastedData.Load()); err != nil {
-		log.Println("Error marshalling combined data:", err)
-	} else {
-		c.send <- jsonBytes
-	}
-
 	registerClient(c)
 	go c.writePump()
 
@@ -117,8 +108,17 @@ func (c *wsClient) writePump() {
 
 func registerClient(c *wsClient) {
 	clientsMu.Lock()
+	defer clientsMu.Unlock()
 	clients[c] = struct{}{}
-	clientsMu.Unlock()
+
+	// Seed the latest snapshot, if one exists, under the same lock that guards
+	// broadcasts. This keeps registration and seeding atomic with respect to a
+	// concurrent broadcast: the client cannot miss an in-flight frame, and it is
+	// never sent a "null" frame before the first poll has produced data. The
+	// send buffer was just created with cap 1, so this never blocks.
+	if b := lastBroadcastedJSON.Load(); b != nil {
+		c.send <- *b
+	}
 }
 
 func unregisterClient(c *wsClient) {
