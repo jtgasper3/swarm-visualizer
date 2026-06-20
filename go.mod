@@ -8,7 +8,7 @@ require (
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/time v0.12.0
+	golang.org/x/time v0.15.0
 )
 
 require (
