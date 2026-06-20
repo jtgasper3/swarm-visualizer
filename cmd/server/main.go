@@ -26,6 +26,18 @@ func main() {
 	docker.RegisterDockerHandlers(cfg)
 	oauth.RegisterOAuthHandlers(cfg)
 
+	// Unauthenticated readiness endpoint at a fixed path (independent of
+	// CONTEXT_ROOT) for orchestrator health checks. Reports ready once the
+	// first successful Docker poll has published data.
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if docker.Ready() {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+	})
+
 	server := &http.Server{
 		Addr:              ":" + cfg.ListenerPort,
 		ReadHeaderTimeout: 10 * time.Second,

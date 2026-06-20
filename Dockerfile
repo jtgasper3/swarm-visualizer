@@ -10,20 +10,24 @@ RUN go mod download
 # Copy the rest of the source code and build
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o swarm-monitor ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o healthcheck ./cmd/healthcheck
 
 # Use a minimal base image for the final stage
 FROM scratch
 
 WORKDIR /
 
-# Copy the binary from the build stage
+# Copy the binaries from the build stage
 COPY --from=builder /app/swarm-monitor /swarm-monitor
+COPY --from=builder /app/healthcheck /healthcheck
 COPY /web/static/ /static
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
-# Expose port the default port 8080m but can be overridden
+# Expose the default port 8080, but it can be overridden
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/healthcheck"]
 
 CMD ["/swarm-monitor"]
