@@ -4,7 +4,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
 func mustParseCIDR(s string) *net.IPNet {
@@ -105,5 +108,63 @@ func TestClientIP(t *testing.T) {
 				t.Errorf("clientIP() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
+	_, cert := rsaX5c(t)
+	jwks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(jwksBody(t, testJWK{kid: "rsa1", x5c: []string{cert}})))
+	}))
+	defer jwks.Close()
+
+	discovery := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"issuer":"https://issuer.example.com",
+			"authorization_endpoint":"https://issuer.example.com/auth",
+			"token_endpoint":"https://issuer.example.com/token",
+			"jwks_uri":"` + jwks.URL + `"
+		}`))
+	}))
+	defer discovery.Close()
+
+	origOAuthConfig := oauthConfig
+	origSigningKeys := signingKeys
+	origMux := http.DefaultServeMux
+	t.Cleanup(func() {
+		oauthConfig = origOAuthConfig
+		signingKeys = origSigningKeys
+		http.DefaultServeMux = origMux
+	})
+	http.DefaultServeMux = http.NewServeMux()
+
+	cfg := &config.Config{
+		ContextRoot: "/",
+		AuthEnabled: true,
+		OAuthConfig: config.OAuthConfig{
+			ClientID:         "client-id",
+			RedirectURL:      "https://app.example.com/callback",
+			OIDCWellKnownURL: discovery.URL,
+		},
+	}
+
+	RegisterOAuthHandlers(cfg)
+
+	if oauthConfig.Endpoint.AuthURL != "https://issuer.example.com/auth" {
+		t.Fatalf("AuthURL = %q, want discovered endpoint", oauthConfig.Endpoint.AuthURL)
+	}
+	if oauthConfig.Endpoint.TokenURL != "https://issuer.example.com/token" {
+		t.Fatalf("TokenURL = %q, want discovered endpoint", oauthConfig.Endpoint.TokenURL)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	rr := httptest.NewRecorder()
+	http.DefaultServeMux.ServeHTTP(rr, req)
+	loc := rr.Header().Get("Location")
+	if !strings.HasPrefix(loc, "https://issuer.example.com/auth?") {
+		t.Fatalf("login redirect Location = %q, want discovered authorization endpoint", loc)
 	}
 }
