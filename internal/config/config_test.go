@@ -178,3 +178,30 @@ func TestLoadConfig_SessionMaxAge(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadConfig_MaxWSConnections verifies MAX_WS_CONNECTIONS parsing.
+func TestLoadConfig_MaxWSConnections(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		want     int
+	}{
+		{name: "unset uses default", envValue: "", want: defaultMaxWSConnections},
+		{name: "valid positive integer", envValue: "50", want: 50},
+		{name: "invalid string falls back to default", envValue: "lots", want: defaultMaxWSConnections},
+		{name: "zero falls back to default", envValue: "0", want: defaultMaxWSConnections},
+		{name: "negative falls back to default", envValue: "-1", want: defaultMaxWSConnections},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			setEnv(t, "MAX_WS_CONNECTIONS", tc.envValue)
+
+			cfg := LoadConfig()
+
+			if cfg.MaxWSConnections != tc.want {
+				t.Errorf("MaxWSConnections = %d, want %d", cfg.MaxWSConnections, tc.want)
+			}
+		})
+	}
+}

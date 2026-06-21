@@ -422,6 +422,7 @@
         }
 
         function updateReceivedData(data) {
+          if (!data) return;
           clusterName.value = data.clusterName;
           authEnabled.value = data.authEnabled;
 

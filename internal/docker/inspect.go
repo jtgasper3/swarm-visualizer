@@ -35,8 +35,8 @@ type cachedTask struct {
 
 var (
 	broadcast = make(chan []byte, 1)
-	// lastBroadcastedData is read by WebSocket handler goroutines while the
-	// single inspectSwarmServices goroutine swaps it, so access is atomic.
+	// lastBroadcastedData holds the most recent snapshot for change detection;
+	// it is written and read only by the single inspectSwarmServices goroutine.
 	lastBroadcastedData atomic.Pointer[SwarmData]
 	// stoppedTaskCache is only accessed from the single inspectSwarmServices goroutine.
 	stoppedTaskCache = make(map[string]cachedTask)
@@ -87,13 +87,13 @@ func inspectSwarmServices(cfg *config.Config) {
 		}
 
 		if prev := lastBroadcastedData.Load(); prev == nil || !reflect.DeepEqual(data, *prev) {
-			lastBroadcastedData.Store(&data)
 			jsonBytes, err := json.Marshal(data)
 			if err != nil {
 				log.Println("Error marshalling combined data:", err)
 				time.Sleep(sleepDuration)
 				continue
 			}
+			lastBroadcastedData.Store(&data)
 			broadcast <- jsonBytes
 		}
 
