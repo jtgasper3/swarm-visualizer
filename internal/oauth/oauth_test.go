@@ -132,13 +132,10 @@ func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
 
 	origOAuthConfig := oauthConfig
 	origSigningKeys := signingKeys
-	origMux := http.DefaultServeMux
 	t.Cleanup(func() {
 		oauthConfig = origOAuthConfig
 		signingKeys = origSigningKeys
-		http.DefaultServeMux = origMux
 	})
-	http.DefaultServeMux = http.NewServeMux()
 
 	cfg := &config.Config{
 		ContextRoot: "/",
@@ -150,7 +147,8 @@ func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
 		},
 	}
 
-	RegisterOAuthHandlers(cfg)
+	mux := http.NewServeMux()
+	RegisterOAuthHandlers(mux, cfg)
 
 	if oauthConfig.Endpoint.AuthURL != "https://issuer.example.com/auth" {
 		t.Fatalf("AuthURL = %q, want discovered endpoint", oauthConfig.Endpoint.AuthURL)
@@ -162,7 +160,7 @@ func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	req.RemoteAddr = "192.0.2.1:1234"
 	rr := httptest.NewRecorder()
-	http.DefaultServeMux.ServeHTTP(rr, req)
+	mux.ServeHTTP(rr, req)
 	loc := rr.Header().Get("Location")
 	if !strings.HasPrefix(loc, "https://issuer.example.com/auth?") {
 		t.Fatalf("login redirect Location = %q, want discovered authorization endpoint", loc)

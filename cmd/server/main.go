@@ -20,26 +20,21 @@ func main() {
 	contextRoot := cfg.ContextRoot
 	log.Printf("Server root context is %s", contextRoot)
 
-	fs := http.FileServer(http.Dir("./static"))
-	http.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
+	mux := http.NewServeMux()
 
-	docker.RegisterDockerHandlers(cfg)
-	oauth.RegisterOAuthHandlers(cfg)
+	fs := http.FileServer(http.Dir("./static"))
+	mux.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
+
+	docker.RegisterDockerHandlers(mux, cfg)
+	oauth.RegisterOAuthHandlers(mux, cfg)
 
 	// Unauthenticated readiness endpoint at a fixed path (independent of
-	// CONTEXT_ROOT) for orchestrator health checks. Reports ready once the
-	// first successful Docker poll has published data.
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if docker.Ready() {
-			w.Header().Set("Content-Type", "text/plain")
-			_, _ = w.Write([]byte("ok"))
-			return
-		}
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
-	})
+	// CONTEXT_ROOT) for orchestrator health checks.
+	mux.Handle("/healthz", healthzHandler(docker.Ready))
 
 	server := &http.Server{
 		Addr:              ":" + cfg.ListenerPort,
+		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      90 * time.Second,
 	}
@@ -62,4 +57,18 @@ func main() {
 		log.Fatal("Server forced to shutdown: ", err)
 	}
 	log.Println("Server stopped")
+}
+
+// healthzHandler reports readiness for orchestrator health checks. It returns
+// 200 once ready returns true (the first successful Docker poll has published
+// data) and 503 otherwise.
+func healthzHandler(ready func() bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ready() {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+	}
 }
