@@ -25,8 +25,15 @@ func main() {
 	fs := http.FileServer(http.Dir("./static"))
 	mux.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
 
-	hub := docker.RegisterDockerHandlers(mux, cfg)
-	oauth.RegisterOAuthHandlers(mux, cfg)
+	// Register auth first so its token validator can be handed to the WebSocket
+	// handler. auth is nil when authentication is disabled.
+	auth := oauth.RegisterOAuthHandlers(mux, cfg)
+	var validate docker.TokenValidator
+	if auth != nil {
+		validate = auth.ValidateToken
+	}
+
+	hub := docker.RegisterDockerHandlers(mux, cfg, validate)
 
 	// Unauthenticated readiness endpoint at a fixed path (independent of
 	// CONTEXT_ROOT) for orchestrator health checks.

@@ -9,7 +9,7 @@ import (
 
 // TestRegisterClient_EnforcesCap verifies the concurrent connection cap.
 func TestRegisterClient_EnforcesCap(t *testing.T) {
-	h := newHub(&config.Config{MaxWSConnections: 2})
+	h := newHub(&config.Config{MaxWSConnections: 2}, nil)
 
 	c1 := &wsClient{send: make(chan []byte, 1)}
 	c2 := &wsClient{send: make(chan []byte, 1)}
@@ -38,7 +38,7 @@ func TestRegisterClient_EnforcesCap(t *testing.T) {
 // TestRegisterClient_SeedsLatestSnapshot verifies a newly registered client is
 // seeded with the most recent snapshot.
 func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
-	h := newHub(&config.Config{})
+	h := newHub(&config.Config{}, nil)
 
 	payload := []byte(`{"clusterName":"test"}`)
 	h.lastFanned = payload
@@ -59,7 +59,7 @@ func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
 // TestRegisterClient_NoSeedBeforeFirstSnapshot verifies that a client that
 // connects before any data has been produced is not sent a "null" frame.
 func TestRegisterClient_NoSeedBeforeFirstSnapshot(t *testing.T) {
-	h := newHub(&config.Config{})
+	h := newHub(&config.Config{}, nil)
 
 	c := &wsClient{send: make(chan []byte, 1)}
 	h.register(c)

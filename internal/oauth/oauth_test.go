@@ -130,13 +130,6 @@ func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
 	}))
 	defer discovery.Close()
 
-	origOAuthConfig := oauthConfig
-	origSigningKeys := signingKeys
-	t.Cleanup(func() {
-		oauthConfig = origOAuthConfig
-		signingKeys = origSigningKeys
-	})
-
 	cfg := &config.Config{
 		ContextRoot: "/",
 		AuthEnabled: true,
@@ -148,13 +141,16 @@ func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	RegisterOAuthHandlers(mux, cfg)
-
-	if oauthConfig.Endpoint.AuthURL != "https://issuer.example.com/auth" {
-		t.Fatalf("AuthURL = %q, want discovered endpoint", oauthConfig.Endpoint.AuthURL)
+	auth := RegisterOAuthHandlers(mux, cfg)
+	if auth == nil {
+		t.Fatal("expected an Authenticator when auth is enabled")
 	}
-	if oauthConfig.Endpoint.TokenURL != "https://issuer.example.com/token" {
-		t.Fatalf("TokenURL = %q, want discovered endpoint", oauthConfig.Endpoint.TokenURL)
+
+	if auth.oauthConfig.Endpoint.AuthURL != "https://issuer.example.com/auth" {
+		t.Fatalf("AuthURL = %q, want discovered endpoint", auth.oauthConfig.Endpoint.AuthURL)
+	}
+	if auth.oauthConfig.Endpoint.TokenURL != "https://issuer.example.com/token" {
+		t.Fatalf("TokenURL = %q, want discovered endpoint", auth.oauthConfig.Endpoint.TokenURL)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)

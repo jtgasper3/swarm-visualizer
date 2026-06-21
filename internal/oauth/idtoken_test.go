@@ -28,10 +28,9 @@ func TestValidateToken(t *testing.T) {
 		client = "client-123"
 	)
 
-	// Point the package-level key store at our test key.
-	orig := signingKeys
-	t.Cleanup(func() { signingKeys = orig })
-	signingKeys = &keyStore{
+	// keyStore seeded with our test key. lastRefresh is recent so an unknown kid
+	// does not trigger a (network) refresh.
+	keys := &keyStore{
 		keys:        map[string]*rsa.PublicKey{kid: &key.PublicKey},
 		lastRefresh: time.Now(),
 	}
@@ -120,7 +119,8 @@ func TestValidateToken(t *testing.T) {
 				}
 			}
 
-			claims, err := ValidateToken(cfg, req)
+			a := &Authenticator{cfg: cfg, keys: keys}
+			claims, err := a.ValidateToken(req)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil (claims=%v)", claims)
