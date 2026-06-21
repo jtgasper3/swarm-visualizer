@@ -106,6 +106,63 @@ func TestSanitizeServices_HideLabels(t *testing.T) {
 	}
 }
 
+func TestSanitizeServices_HideLabelsCategory(t *testing.T) {
+	newSvc := func() swarm.Service {
+		return swarm.Service{
+			Spec: swarm.ServiceSpec{
+				TaskTemplate: swarm.TaskSpec{
+					ContainerSpec: &swarm.ContainerSpec{
+						Labels: map[string]string{"c": "v"},
+					},
+				},
+				Annotations: swarm.Annotations{Labels: map[string]string{"s": "v"}},
+			},
+		}
+	}
+
+	// "service" hides service-level labels but leaves container labels.
+	out := sanitizeServices([]swarm.Service{newSvc()}, &config.Config{HideLabels: []string{"service"}})
+	if out[0].Spec.Labels != nil {
+		t.Fatalf("expected service labels to be nil, got: %#v", out[0].Spec.Labels)
+	}
+	if out[0].Spec.TaskTemplate.ContainerSpec.Labels == nil {
+		t.Fatalf("expected container labels to be retained under 'service'")
+	}
+
+	// "container" hides container labels but leaves service-level labels.
+	out = sanitizeServices([]swarm.Service{newSvc()}, &config.Config{HideLabels: []string{"container"}})
+	if out[0].Spec.TaskTemplate.ContainerSpec.Labels != nil {
+		t.Fatalf("expected container labels to be nil, got: %#v", out[0].Spec.TaskTemplate.ContainerSpec.Labels)
+	}
+	if out[0].Spec.Labels == nil {
+		t.Fatalf("expected service labels to be retained under 'container'")
+	}
+
+	// "all" hides both.
+	out = sanitizeServices([]swarm.Service{newSvc()}, &config.Config{HideLabels: []string{"all"}})
+	if out[0].Spec.Labels != nil || out[0].Spec.TaskTemplate.ContainerSpec.Labels != nil {
+		t.Fatalf("expected all labels to be nil under 'all'")
+	}
+}
+
+func TestSanitizeTasks_HideLabelsCategory(t *testing.T) {
+	newTask := func() swarm.Task {
+		return swarm.Task{Spec: swarm.TaskSpec{ContainerSpec: &swarm.ContainerSpec{Labels: map[string]string{"c": "v"}}}}
+	}
+
+	// "container" hides task container labels.
+	out := sanitizeTasks([]swarm.Task{newTask()}, &config.Config{HideLabels: []string{"container"}})
+	if out[0].Spec.ContainerSpec.Labels != nil {
+		t.Fatalf("expected task container labels to be nil, got: %#v", out[0].Spec.ContainerSpec.Labels)
+	}
+
+	// "task" is no longer a recognized category and must be a no-op.
+	out = sanitizeTasks([]swarm.Task{newTask()}, &config.Config{HideLabels: []string{"task"}})
+	if out[0].Spec.ContainerSpec.Labels == nil {
+		t.Fatalf("expected task container labels to be retained for unrecognized 'task' category")
+	}
+}
+
 func TestSanitizeTasks_HideAllEnvs(t *testing.T) {
 	tsk := swarm.Task{Spec: swarm.TaskSpec{ContainerSpec: &swarm.ContainerSpec{Env: []string{"A=1"}, Labels: map[string]string{"l": "v"}}}}
 	out := sanitizeTasks([]swarm.Task{tsk}, &config.Config{HideAllEnvs: true})

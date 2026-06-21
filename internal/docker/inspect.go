@@ -237,6 +237,8 @@ func sanitizeServices(services []swarm.Service, cfg *config.Config) []swarm.Serv
 		}
 		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "service") {
 			svc.Spec.Labels = nil
+		}
+		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "container") {
 			svc.Spec.TaskTemplate.ContainerSpec.Labels = nil
 		}
 
@@ -320,7 +322,7 @@ func sanitizeTasks(tasks []swarm.Task, cfg *config.Config) []swarm.Task {
 		if cfg.HideAllSecrets {
 			t.Spec.ContainerSpec.Secrets = nil
 		}
-		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "task") {
+		if slices.Contains(cfg.HideLabels, "all") || slices.Contains(cfg.HideLabels, "container") {
 			t.Spec.ContainerSpec.Labels = nil
 		}
 	}

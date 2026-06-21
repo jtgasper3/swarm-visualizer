@@ -99,6 +99,34 @@ func TestLoadConfig_TrustedProxies(t *testing.T) {
 	}
 }
 
+// TestSplitList verifies comma-list parsing trims entries and drops empties.
+func TestSplitList(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{name: "empty yields nil", input: "", want: nil},
+		{name: "whitespace only yields nil", input: "  ,  ,", want: nil},
+		{name: "single value", input: "node", want: []string{"node"}},
+		{name: "trims and drops empties", input: " node , , service ", want: []string{"node", "service"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitList(tc.input)
+			if len(got) != len(tc.want) {
+				t.Fatalf("splitList(%q) = %#v, want %#v", tc.input, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("splitList(%q) = %#v, want %#v", tc.input, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
 // TestLoadConfig_SessionMaxAge verifies OIDC_SESSION_MAX_AGE parsing.
 func TestLoadConfig_SessionMaxAge(t *testing.T) {
 	tests := []struct {
