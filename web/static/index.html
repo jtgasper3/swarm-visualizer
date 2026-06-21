@@ -52,6 +52,7 @@
 
         <template #append>
             <div class="ga-2 align-center">
+              <v-btn v-if="authEnabled" icon="mdi-logout" title="Log out" aria-label="Log out" @click="logout()"></v-btn>
               <!-- <v-btn color="medium-emphasis" icon="mdi-email-outline">
                 <v-badge color="error" content="1" dot>
                   <v-icon />
@@ -264,6 +265,7 @@
     createApp({
       setup() {
         const clusterName = shallowRef('');
+        const authEnabled = shallowRef(false);
         const drawer = useStorage('drawer', true);
         const wsState = shallowRef('connecting');
         const filters = useStorage('filters.4', {
@@ -366,6 +368,10 @@
           window.location.href = window.location.pathname + 'login';
         }
 
+        function logout() {
+          window.location.href = window.location.pathname + 'logout';
+        }
+
         function selectNetworks(option) {
           if (option === 'all') {
             const uniqueItems = networks.value.filter(network => !filters.value.networksSelection.includes(network.Id)).map((network => network.Id))
@@ -417,6 +423,7 @@
 
         function updateReceivedData(data) {
           clusterName.value = data.clusterName;
+          authEnabled.value = data.authEnabled;
 
           networks.value = data.networks;
 
@@ -498,6 +505,7 @@
 
         return {
           clusterName,
+          authEnabled,
           drawer,
           wsState,
           vuetifyDefaults,
@@ -513,6 +521,7 @@
           sortedServicesGroups,
           createServiceName,
           getAuthorized,
+          logout,
           selectNetworks,
           selectNodes,
           selectServices,
