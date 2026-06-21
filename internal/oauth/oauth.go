@@ -115,14 +115,13 @@ func RegisterOAuthHandlers(mux *http.ServeMux, cfg *config.Config) *Authenticato
 	if err != nil {
 		log.Fatalf("Failed to initialize authentication: %v", err)
 	}
+	go auth.cleanupLimiters()
 	auth.register(mux)
 	return auth
 }
 
-// register wires the auth endpoints onto mux and starts the limiter cleanup.
+// register wires the auth endpoints onto mux.
 func (a *Authenticator) register(mux *http.ServeMux) {
-	go a.cleanupLimiters()
-
 	mux.HandleFunc(a.cfg.ContextRoot+"login", func(w http.ResponseWriter, r *http.Request) {
 		if !a.authLimiter(clientIP(r, a.cfg.TrustedProxies)).Allow() {
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
