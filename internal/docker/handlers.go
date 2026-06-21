@@ -14,34 +14,66 @@ import (
 	"github.com/jtgasper3/swarm-visualizer/internal/oauth"
 )
 
-var (
-	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			if origin == "" {
-				return true // non-browser clients (curl, native apps)
-			}
-			u, err := url.Parse(origin)
-			if err != nil {
-				return false
-			}
-			return u.Host == r.Host
-		},
-	}
-	clientsMu sync.Mutex
-	clients   = make(map[*wsClient]struct{})
-	// lastFanned is the most recent frame handed to handleBroadcasts, guarded by
-	// clientsMu. A newly registered client is seeded with it (under the same
-	// lock) so its seed is never newer than a frame still queued for fan-out,
-	// which would otherwise make the client briefly roll back to older state.
-	lastFanned []byte
-	// maxClients caps the number of concurrent WebSocket connections to bound
-	// resource use. 0 means unlimited; it is set from config in
-	// RegisterDockerHandlers.
-	maxClients int
-)
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser clients (curl, native apps)
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host
+	},
+}
 
 const wsWriteTimeout = 5 * time.Second
+
+// Hub owns the set of connected WebSocket clients and fans out snapshot frames
+// to them. One Hub backs the running server; tests construct their own.
+type Hub struct {
+	cfg *config.Config
+
+	mu sync.Mutex
+	// clients is the set of connected clients.
+	clients map[*wsClient]struct{}
+	// lastFanned is the most recent frame handed out, guarded by mu. A newly
+	// registered client is seeded with it (under the same lock) so its seed is
+	// never newer than a frame still queued for fan-out, which would otherwise
+	// make the client briefly roll back to older state.
+	lastFanned []byte
+	// maxClients caps concurrent connections to bound resource use. 0 means
+	// unlimited.
+	maxClients int
+
+	// broadcast carries marshalled snapshots from the inspector to runBroadcasts.
+	broadcast chan []byte
+}
+
+// newHub creates a Hub configured from cfg.
+func newHub(cfg *config.Config) *Hub {
+	return &Hub{
+		cfg:        cfg,
+		clients:    make(map[*wsClient]struct{}),
+		maxClients: cfg.MaxWSConnections,
+		broadcast:  make(chan []byte, 1),
+	}
+}
+
+// Ready reports whether at least one snapshot has been fanned out, i.e. the
+// Docker API is reachable and data has been published. It stays true once the
+// first frame is sent, so it does not flap on transient errors.
+func (h *Hub) Ready() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastFanned != nil
+}
+
+// Publish hands a marshalled snapshot to the fan-out goroutine.
+func (h *Hub) Publish(frame []byte) {
+	h.broadcast <- frame
+}
 
 // Keepalive timings: a ping is sent every pingPeriod(), and the read side must
 // see a pong (or any frame) within pongWait() or the peer is considered dead
@@ -71,28 +103,30 @@ type wsClient struct {
 	send chan []byte
 }
 
-func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config) {
-	maxClients = cfg.MaxWSConnections
+func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config) *Hub {
+	hub := newHub(cfg)
 
 	src, err := newMobySource()
 	if err != nil {
 		log.Fatal("Docker client error:", err)
 	}
 
-	go inspectSwarmServices(cfg, src)
-	go handleBroadcasts()
+	go inspectSwarmServices(cfg, src, hub)
+	go hub.runBroadcasts()
 
-	mux.HandleFunc(cfg.ContextRoot+"ws", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(cfg, w, r)
-	})
+	mux.HandleFunc(cfg.ContextRoot+"ws", hub.handleConnections)
+
+	return hub
 }
 
-func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
+func (h *Hub) handleConnections(w http.ResponseWriter, r *http.Request) {
+	cfg := h.cfg
+
 	// Shed load before the WebSocket handshake when already at capacity. This
-	// is best effort; registerClient performs the authoritative check.
-	if atClientCapacity() {
+	// is best effort; register performs the authoritative check.
+	if h.atCapacity() {
 		http.Error(w, "Too many connections", http.StatusServiceUnavailable)
-		log.Printf("Connection rejected, server at capacity (%d): %s", maxClients, r.RemoteAddr)
+		log.Printf("Connection rejected, server at capacity (%d): %s", h.maxClients, r.RemoteAddr)
 		return
 	}
 
@@ -119,9 +153,9 @@ func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Reques
 
 	c := &wsClient{conn: ws, send: make(chan []byte, 1)}
 
-	if !registerClient(c) {
+	if !h.register(c) {
 		// Capacity was reached between the pre-upgrade check and here.
-		log.Printf("Connection rejected, server at capacity (%d): %s", maxClients, r.RemoteAddr)
+		log.Printf("Connection rejected, server at capacity (%d): %s", h.maxClients, r.RemoteAddr)
 		ws.Close()
 		return
 	}
@@ -147,7 +181,7 @@ func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Reques
 			break
 		}
 	}
-	unregisterClient(c)
+	h.unregister(c)
 }
 
 // writePump owns every write to the connection: snapshot frames from send and
@@ -183,27 +217,27 @@ func (c *wsClient) writePump() {
 	}
 }
 
-// atClientCapacity reports whether the concurrent connection limit is reached.
-func atClientCapacity() bool {
-	if maxClients <= 0 {
+// atCapacity reports whether the concurrent connection limit is reached.
+func (h *Hub) atCapacity() bool {
+	if h.maxClients <= 0 {
 		return false
 	}
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	return len(clients) >= maxClients
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.clients) >= h.maxClients
 }
 
-// registerClient adds the client to the registry and seeds it with the latest
+// register adds the client to the registry and seeds it with the latest
 // snapshot, all under the broadcast lock. It returns false (registering
 // nothing) if the concurrent connection cap is reached.
-func registerClient(c *wsClient) bool {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
+func (h *Hub) register(c *wsClient) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-	if maxClients > 0 && len(clients) >= maxClients {
+	if h.maxClients > 0 && len(h.clients) >= h.maxClients {
 		return false
 	}
-	clients[c] = struct{}{}
+	h.clients[c] = struct{}{}
 
 	// Seed the most recently fanned-out frame, if any, under the same lock that
 	// guards broadcasts. This keeps registration and seeding atomic with respect
@@ -211,34 +245,35 @@ func registerClient(c *wsClient) bool {
 	// "null" frame before the first poll, and is never seeded with a frame newer
 	// than one still queued for fan-out (which would cause a visible rollback).
 	// The send buffer was just created with cap 1, so this never blocks.
-	if lastFanned != nil {
-		c.send <- lastFanned
+	if h.lastFanned != nil {
+		c.send <- h.lastFanned
 	}
 	return true
 }
 
-func unregisterClient(c *wsClient) {
-	clientsMu.Lock()
-	if _, ok := clients[c]; ok {
-		delete(clients, c)
+func (h *Hub) unregister(c *wsClient) {
+	h.mu.Lock()
+	if _, ok := h.clients[c]; ok {
+		delete(h.clients, c)
 		// Closing send terminates writePump's range. Safe against the
 		// broadcaster because it only enqueues to clients still in the map
 		// and holds the same lock.
 		close(c.send)
 	}
-	clientsMu.Unlock()
+	h.mu.Unlock()
 }
 
-func handleBroadcasts() {
-	for msg := range broadcast {
-		clientsMu.Lock()
+// runBroadcasts fans out each published frame to all connected clients.
+func (h *Hub) runBroadcasts() {
+	for msg := range h.broadcast {
+		h.mu.Lock()
 		// Record the frame being fanned out so a client registering concurrently
 		// is seeded with this frame (or a newer one), never a stale one.
-		lastFanned = msg
-		for c := range clients {
+		h.lastFanned = msg
+		for c := range h.clients {
 			enqueue(c, msg)
 		}
-		clientsMu.Unlock()
+		h.mu.Unlock()
 	}
 }
 

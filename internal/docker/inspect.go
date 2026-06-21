@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/jtgasper3/swarm-visualizer/internal"
@@ -33,21 +32,8 @@ type cachedTask struct {
 	firstSeen time.Time
 }
 
-var (
-	broadcast = make(chan []byte, 1)
-	// lastBroadcastedData holds the most recent snapshot for change detection;
-	// it is written and read only by the single inspectSwarmServices goroutine.
-	lastBroadcastedData atomic.Pointer[SwarmData]
-	// stoppedTaskCache is only accessed from the single inspectSwarmServices goroutine.
-	stoppedTaskCache = make(map[string]cachedTask)
-)
-
-// Ready reports whether at least one successful swarm inspection has completed,
-// i.e. the Docker API is reachable and data has been published. It stays true
-// once the first poll succeeds, so it does not flap on transient errors.
-func Ready() bool {
-	return lastBroadcastedData.Load() != nil
-}
+// stoppedTaskCache is only accessed from the single inspectSwarmServices goroutine.
+var stoppedTaskCache = make(map[string]cachedTask)
 
 // swarmSource is the subset of the Docker API the inspector needs. It is an
 // interface so tests can substitute a fake daemon for the real client.
@@ -123,7 +109,7 @@ const (
 // fields and is therefore idempotent; re-applying it to a cached (already
 // cleared) slice that is also referenced by the previously published snapshot
 // leaves that snapshot's bytes unchanged, so change detection stays correct.
-func inspectSwarmServices(cfg *config.Config, src swarmSource) {
+func inspectSwarmServices(cfg *config.Config, src swarmSource, hub *Hub) {
 	ctx := context.Background()
 
 	var (
@@ -134,6 +120,10 @@ func inspectSwarmServices(cfg *config.Config, src swarmSource) {
 
 		haveStructural bool
 		haveTasks      bool
+
+		// lastPublished is the previous snapshot, kept for change detection. It is
+		// only touched by this single goroutine.
+		lastPublished *SwarmData
 	)
 
 	refreshStructural := func() bool {
@@ -179,14 +169,14 @@ func inspectSwarmServices(cfg *config.Config, src swarmSource) {
 			}
 		}
 
-		if prev := lastBroadcastedData.Load(); prev == nil || !reflect.DeepEqual(data, *prev) {
+		if lastPublished == nil || !reflect.DeepEqual(data, *lastPublished) {
 			jsonBytes, err := json.Marshal(data)
 			if err != nil {
 				log.Println("Error marshalling combined data:", err)
 				return
 			}
-			lastBroadcastedData.Store(&data)
-			broadcast <- jsonBytes
+			lastPublished = &data
+			hub.Publish(jsonBytes)
 		}
 	}
 

@@ -3,46 +3,34 @@ package docker
 import (
 	"testing"
 	"time"
-)
 
-// resetClientState clears the package-level client registry and seed snapshot
-// so a test starts from a known state.
-func resetClientState(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() {
-		clientsMu.Lock()
-		clients = make(map[*wsClient]struct{})
-		lastFanned = nil
-		clientsMu.Unlock()
-		maxClients = 0
-	})
-}
+	"github.com/jtgasper3/swarm-visualizer/internal/config"
+)
 
 // TestRegisterClient_EnforcesCap verifies the concurrent connection cap.
 func TestRegisterClient_EnforcesCap(t *testing.T) {
-	resetClientState(t)
-	maxClients = 2
+	h := newHub(&config.Config{MaxWSConnections: 2})
 
 	c1 := &wsClient{send: make(chan []byte, 1)}
 	c2 := &wsClient{send: make(chan []byte, 1)}
 	c3 := &wsClient{send: make(chan []byte, 1)}
 
-	if !registerClient(c1) || !registerClient(c2) {
+	if !h.register(c1) || !h.register(c2) {
 		t.Fatal("expected the first two clients to register")
 	}
-	if registerClient(c3) {
+	if h.register(c3) {
 		t.Fatal("expected the third client to be rejected at capacity")
 	}
-	if atClientCapacity() != true {
-		t.Fatal("expected atClientCapacity to report full")
+	if !h.atCapacity() {
+		t.Fatal("expected atCapacity to report full")
 	}
 
 	// Freeing a slot allows a new client in.
-	unregisterClient(c1)
-	if atClientCapacity() {
+	h.unregister(c1)
+	if h.atCapacity() {
 		t.Fatal("expected capacity after unregister")
 	}
-	if !registerClient(c3) {
+	if !h.register(c3) {
 		t.Fatal("expected registration to succeed after a slot freed")
 	}
 }
@@ -50,13 +38,13 @@ func TestRegisterClient_EnforcesCap(t *testing.T) {
 // TestRegisterClient_SeedsLatestSnapshot verifies a newly registered client is
 // seeded with the most recent snapshot.
 func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
-	resetClientState(t)
+	h := newHub(&config.Config{})
 
 	payload := []byte(`{"clusterName":"test"}`)
-	lastFanned = payload
+	h.lastFanned = payload
 
 	c := &wsClient{send: make(chan []byte, 1)}
-	registerClient(c)
+	h.register(c)
 
 	select {
 	case got := <-c.send:
@@ -71,11 +59,10 @@ func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
 // TestRegisterClient_NoSeedBeforeFirstSnapshot verifies that a client that
 // connects before any data has been produced is not sent a "null" frame.
 func TestRegisterClient_NoSeedBeforeFirstSnapshot(t *testing.T) {
-	resetClientState(t)
-	lastFanned = nil
+	h := newHub(&config.Config{})
 
 	c := &wsClient{send: make(chan []byte, 1)}
-	registerClient(c)
+	h.register(c)
 
 	select {
 	case got := <-c.send:

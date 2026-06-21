@@ -9,17 +9,15 @@ import (
 )
 
 func TestReady(t *testing.T) {
-	orig := lastBroadcastedData.Load()
-	t.Cleanup(func() { lastBroadcastedData.Store(orig) })
+	h := newHub(&config.Config{})
 
-	lastBroadcastedData.Store(nil)
-	if Ready() {
-		t.Fatal("expected not ready before the first successful poll")
+	if h.Ready() {
+		t.Fatal("expected not ready before the first frame is fanned out")
 	}
 
-	lastBroadcastedData.Store(&SwarmData{})
-	if !Ready() {
-		t.Fatal("expected ready once data has been published")
+	h.lastFanned = []byte(`{}`)
+	if !h.Ready() {
+		t.Fatal("expected ready once a frame has been fanned out")
 	}
 }
 

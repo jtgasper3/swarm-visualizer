@@ -12,10 +12,10 @@ import (
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
-func clientCount() int {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	return len(clients)
+func clientCount(h *Hub) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.clients)
 }
 
 // setKeepalive overrides the ping/pong timings for the duration of a test.
@@ -47,13 +47,10 @@ func waitFor(t *testing.T, cond func() bool, timeout time.Duration) bool {
 // that does not read also never auto-replies to pings, which simulates a peer
 // that has silently vanished.
 func TestKeepalive_ReapsUnresponsivePeer(t *testing.T) {
-	resetClientState(t)
 	setKeepalive(t, 50*time.Millisecond, 250*time.Millisecond)
 
-	cfg := &config.Config{ContextRoot: "/"}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(cfg, w, r)
-	}))
+	h := newHub(&config.Config{ContextRoot: "/"})
+	srv := httptest.NewServer(http.HandlerFunc(h.handleConnections))
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
@@ -65,26 +62,23 @@ func TestKeepalive_ReapsUnresponsivePeer(t *testing.T) {
 	// Deliberately never read from conn: the client never auto-replies to the
 	// server's pings, so the server should reap it after pongWait.
 
-	if !waitFor(t, func() bool { return clientCount() == 1 }, 2*time.Second) {
-		t.Fatalf("client never registered (count=%d)", clientCount())
+	if !waitFor(t, func() bool { return clientCount(h) == 1 }, 2*time.Second) {
+		t.Fatalf("client never registered (count=%d)", clientCount(h))
 	}
-	if !waitFor(t, func() bool { return clientCount() == 0 }, 3*time.Second) {
-		t.Fatalf("unresponsive client was not reaped (count=%d)", clientCount())
+	if !waitFor(t, func() bool { return clientCount(h) == 0 }, 3*time.Second) {
+		t.Fatalf("unresponsive client was not reaped (count=%d)", clientCount(h))
 	}
 }
 
 // TestKeepalive_ResponsivePeerStaysConnected verifies that a client which reads
 // (and therefore auto-replies to pings) is not reaped.
 func TestKeepalive_ResponsivePeerStaysConnected(t *testing.T) {
-	resetClientState(t)
 	// Keep pongWait generously larger than pingPeriod so frequent pongs hold the
 	// deadline open even under the scheduling jitter of the race detector.
 	setKeepalive(t, 50*time.Millisecond, 600*time.Millisecond)
 
-	cfg := &config.Config{ContextRoot: "/"}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(cfg, w, r)
-	}))
+	h := newHub(&config.Config{ContextRoot: "/"})
+	srv := httptest.NewServer(http.HandlerFunc(h.handleConnections))
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
@@ -105,13 +99,13 @@ func TestKeepalive_ResponsivePeerStaysConnected(t *testing.T) {
 		}
 	}()
 
-	if !waitFor(t, func() bool { return clientCount() == 1 }, 2*time.Second) {
-		t.Fatalf("client never registered (count=%d)", clientCount())
+	if !waitFor(t, func() bool { return clientCount(h) == 1 }, 2*time.Second) {
+		t.Fatalf("client never registered (count=%d)", clientCount(h))
 	}
 	// Past a full pongWait window (many ping/pong cycles), a responsive client
 	// must still be connected.
 	time.Sleep(pongWait() + 200*time.Millisecond)
-	if got := clientCount(); got != 1 {
+	if got := clientCount(h); got != 1 {
 		t.Fatalf("responsive client should stay connected, count=%d", got)
 	}
 
