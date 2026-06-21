@@ -87,7 +87,7 @@ func cleanupAuthLimiters() {
 	}
 }
 
-func RegisterOAuthHandlers(cfg *config.Config) {
+func RegisterOAuthHandlers(mux *http.ServeMux, cfg *config.Config) {
 	if cfg.AuthEnabled {
 		// Fetch and parse the well-known OIDC config before building the
 		// oauth2.Config so discovered auth/token endpoints are included.
@@ -100,21 +100,21 @@ func RegisterOAuthHandlers(cfg *config.Config) {
 
 		go cleanupAuthLimiters()
 
-		http.HandleFunc(cfg.ContextRoot+"login", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(cfg.ContextRoot+"login", func(w http.ResponseWriter, r *http.Request) {
 			if !getAuthLimiter(clientIP(r, cfg.TrustedProxies)).Allow() {
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
 			}
 			handleLogin(cfg, w, r)
 		})
-		http.HandleFunc(cfg.ContextRoot+"callback", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(cfg.ContextRoot+"callback", func(w http.ResponseWriter, r *http.Request) {
 			if !getAuthLimiter(clientIP(r, cfg.TrustedProxies)).Allow() {
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
 			}
 			handleCallback(cfg, w, r)
 		})
-		http.HandleFunc(cfg.ContextRoot+"logout", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(cfg.ContextRoot+"logout", func(w http.ResponseWriter, r *http.Request) {
 			handleLogout(cfg, w, r)
 		})
 	}

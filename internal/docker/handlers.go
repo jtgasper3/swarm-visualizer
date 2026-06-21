@@ -71,7 +71,7 @@ type wsClient struct {
 	send chan []byte
 }
 
-func RegisterDockerHandlers(cfg *config.Config) {
+func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config) {
 	maxClients = cfg.MaxWSConnections
 
 	src, err := newMobySource()
@@ -82,10 +82,9 @@ func RegisterDockerHandlers(cfg *config.Config) {
 	go inspectSwarmServices(cfg, src)
 	go handleBroadcasts()
 
-	http.HandleFunc(cfg.ContextRoot+"ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(cfg.ContextRoot+"ws", func(w http.ResponseWriter, r *http.Request) {
 		handleConnections(cfg, w, r)
 	})
-
 }
 
 func handleConnections(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
