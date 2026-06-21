@@ -37,11 +37,6 @@ var (
 	// lastBroadcastedData holds the most recent snapshot for change detection;
 	// it is written and read only by the single inspectSwarmServices goroutine.
 	lastBroadcastedData atomic.Pointer[SwarmData]
-	// lastBroadcastedJSON holds the marshalled form of the most recent snapshot
-	// so a newly connected client can be seeded with a cheap pointer load. It is
-	// written by inspectSwarmServices and read by WebSocket handler goroutines,
-	// so access is atomic.
-	lastBroadcastedJSON atomic.Pointer[[]byte]
 	// stoppedTaskCache is only accessed from the single inspectSwarmServices goroutine.
 	stoppedTaskCache = make(map[string]cachedTask)
 )
@@ -89,10 +84,6 @@ func inspectSwarmServices(cfg *config.Config) {
 				time.Sleep(sleepDuration)
 				continue
 			}
-			// Publish the marshalled form before the struct so that any client
-			// observing the new snapshot for change detection can also be seeded
-			// with matching JSON.
-			lastBroadcastedJSON.Store(&jsonBytes)
 			lastBroadcastedData.Store(&data)
 			broadcast <- jsonBytes
 		}

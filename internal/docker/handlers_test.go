@@ -12,8 +12,8 @@ func resetClientState(t *testing.T) {
 	t.Cleanup(func() {
 		clientsMu.Lock()
 		clients = make(map[*wsClient]struct{})
+		lastFanned = nil
 		clientsMu.Unlock()
-		lastBroadcastedJSON.Store(nil)
 		maxClients = 0
 	})
 }
@@ -53,7 +53,7 @@ func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
 	resetClientState(t)
 
 	payload := []byte(`{"clusterName":"test"}`)
-	lastBroadcastedJSON.Store(&payload)
+	lastFanned = payload
 
 	c := &wsClient{send: make(chan []byte, 1)}
 	registerClient(c)
@@ -72,7 +72,7 @@ func TestRegisterClient_SeedsLatestSnapshot(t *testing.T) {
 // connects before any data has been produced is not sent a "null" frame.
 func TestRegisterClient_NoSeedBeforeFirstSnapshot(t *testing.T) {
 	resetClientState(t)
-	lastBroadcastedJSON.Store(nil)
+	lastFanned = nil
 
 	c := &wsClient{send: make(chan []byte, 1)}
 	registerClient(c)
