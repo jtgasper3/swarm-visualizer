@@ -49,25 +49,119 @@ func Ready() bool {
 	return lastBroadcastedData.Load() != nil
 }
 
-func inspectSwarmServices(cfg *config.Config) {
-	sleepDuration := 1 * time.Second
+// swarmSource is the subset of the Docker API the inspector needs. It is an
+// interface so tests can substitute a fake daemon for the real client.
+type swarmSource interface {
+	Nodes(ctx context.Context) ([]swarm.Node, error)
+	Services(ctx context.Context) ([]swarm.Service, error)
+	Tasks(ctx context.Context) ([]swarm.Task, error)
+	Networks(ctx context.Context) ([]network.Summary, error)
+}
 
+// mobySource adapts the real Docker client to swarmSource.
+type mobySource struct{ cli *client.Client }
+
+// newMobySource creates a swarmSource backed by a Docker client configured from
+// the environment.
+func newMobySource() (swarmSource, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		log.Fatal("Docker client error:", err)
+		return nil, err
+	}
+	return mobySource{cli: cli}, nil
+}
+
+func (m mobySource) Nodes(ctx context.Context) ([]swarm.Node, error) {
+	res, err := m.cli.NodeList(ctx, client.NodeListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
+
+func (m mobySource) Services(ctx context.Context) ([]swarm.Service, error) {
+	res, err := m.cli.ServiceList(ctx, client.ServiceListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
+
+func (m mobySource) Tasks(ctx context.Context) ([]swarm.Task, error) {
+	res, err := m.cli.TaskList(ctx, client.TaskListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
+
+func (m mobySource) Networks(ctx context.Context) ([]network.Summary, error) {
+	res, err := m.cli.NetworkList(ctx, client.NetworkListOptions{Filters: make(client.Filters).Add("scope", "swarm")})
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
+
+const (
+	// taskPollInterval is how often task state is refreshed. Tasks change the
+	// most and are not observable via the Docker events API (there is no task
+	// event type), so they are polled at this cadence.
+	taskPollInterval = 1 * time.Second
+	// structuralPollInterval is how often the slower-changing nodes, services,
+	// and networks are refreshed.
+	structuralPollInterval = 5 * time.Second
+)
+
+// inspectSwarmServices polls the swarm and publishes a snapshot whenever it
+// changes. Tasks are polled frequently for freshness; nodes, services, and
+// networks change rarely, so they are polled on a slower cadence. The most
+// recently fetched value for each group is cached between ticks and reassembled
+// on every publish.
+//
+// Reassembly applies SensitiveDataPaths via ClearByPath, which only zeroes
+// fields and is therefore idempotent; re-applying it to a cached (already
+// cleared) slice that is also referenced by the previously published snapshot
+// leaves that snapshot's bytes unchanged, so change detection stays correct.
+func inspectSwarmServices(cfg *config.Config, src swarmSource) {
+	ctx := context.Background()
+
+	var (
+		nodes    []swarm.Node
+		services []swarm.Service
+		networks []network.Summary
+		tasks    []swarm.Task
+
+		haveStructural bool
+		haveTasks      bool
+	)
+
+	refreshStructural := func() bool {
+		n, errN := getNodesInfo(ctx, src, cfg)
+		s, errS := getServicesInfo(ctx, src, cfg)
+		nw, errNw := getNetworksInfo(ctx, src, cfg)
+		if errN != nil || errS != nil || errNw != nil {
+			return false
+		}
+		nodes, services, networks = n, s, nw
+		haveStructural = true
+		return true
 	}
 
-	for {
-		ctx := context.Background()
+	refreshTasks := func() bool {
+		t, err := getTasksInfo(ctx, src, cfg)
+		if err != nil {
+			return false
+		}
+		tasks = t
+		haveTasks = true
+		return true
+	}
 
-		nodes, errNode := getNodesInfo(ctx, cli, cfg)
-		tasks, errTask := getTasksInfo(ctx, cli, cfg)
-		services, errService := getServicesInfo(ctx, cli, cfg)
-		networks, errNetwork := getNetworksInfo(ctx, cli, cfg)
-
-		if errNode != nil || errTask != nil || errService != nil || errNetwork != nil {
-			time.Sleep(sleepDuration)
-			continue
+	publish := func() {
+		// Don't publish a partial view before every group has loaded once.
+		if !haveStructural || !haveTasks {
+			return
 		}
 
 		data := SwarmData{
@@ -80,8 +174,7 @@ func inspectSwarmServices(cfg *config.Config) {
 		}
 
 		for _, item := range cfg.SensitiveDataPaths {
-			clearErr := internal.ClearByPath(&data, item)
-			if clearErr != nil {
+			if clearErr := internal.ClearByPath(&data, item); clearErr != nil {
 				log.Println("Error clearing sensitive data:", clearErr, item)
 			}
 		}
@@ -90,24 +183,44 @@ func inspectSwarmServices(cfg *config.Config) {
 			jsonBytes, err := json.Marshal(data)
 			if err != nil {
 				log.Println("Error marshalling combined data:", err)
-				time.Sleep(sleepDuration)
-				continue
+				return
 			}
 			lastBroadcastedData.Store(&data)
 			broadcast <- jsonBytes
 		}
+	}
 
-		time.Sleep(sleepDuration)
+	// Initial fetch so clients connecting at startup get a full snapshot
+	// promptly rather than waiting for the first structural tick.
+	refreshStructural()
+	refreshTasks()
+	publish()
+
+	taskTicker := time.NewTicker(taskPollInterval)
+	defer taskTicker.Stop()
+	structuralTicker := time.NewTicker(structuralPollInterval)
+	defer structuralTicker.Stop()
+
+	for {
+		select {
+		case <-taskTicker.C:
+			if refreshTasks() {
+				publish()
+			}
+		case <-structuralTicker.C:
+			if refreshStructural() {
+				publish()
+			}
+		}
 	}
 }
 
-func getNetworksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]network.Summary, error) {
-	result, err := cli.NetworkList(ctx, client.NetworkListOptions{Filters: make(client.Filters).Add("scope", "swarm")})
+func getNetworksInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]network.Summary, error) {
+	networks, err := src.Networks(ctx)
 	if err != nil {
 		log.Printf("Error fetching networks: %v", err)
 		return nil, err
 	}
-	networks := result.Items
 
 	filteredNetworks := make([]network.Summary, 0, len(networks))
 	for _, net := range networks {
@@ -124,41 +237,34 @@ func getNetworksInfo(ctx context.Context, cli *client.Client, cfg *config.Config
 	return filteredNetworks, nil
 }
 
-func getNodesInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Node, error) {
-	result, err := cli.NodeList(ctx, client.NodeListOptions{})
+func getNodesInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]swarm.Node, error) {
+	nodes, err := src.Nodes(ctx)
 	if err != nil {
 		log.Printf("Error fetching nodes: %v", err)
 		return nil, err
 	}
 
-	// Sanitize nodes
-	nodes := sanitizeNodes(result.Items, cfg)
-
-	return nodes, nil
+	return sanitizeNodes(nodes, cfg), nil
 }
 
-func getServicesInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Service, error) {
-	result, err := cli.ServiceList(ctx, client.ServiceListOptions{})
+func getServicesInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]swarm.Service, error) {
+	services, err := src.Services(ctx)
 	if err != nil {
 		log.Printf("Error fetching services: %v", err)
 		return nil, err
 	}
 
-	// Sanitize services
-	services := sanitizeServices(result.Items, cfg)
-
-	return services, nil
+	return sanitizeServices(services, cfg), nil
 }
 
 const failedTaskGracePeriod = 30 * time.Second
 
-func getTasksInfo(ctx context.Context, cli *client.Client, cfg *config.Config) ([]swarm.Task, error) {
-	taskList, err := cli.TaskList(ctx, client.TaskListOptions{})
+func getTasksInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]swarm.Task, error) {
+	tasks, err := src.Tasks(ctx)
 	if err != nil {
 		log.Printf("Error fetching tasks: %v", err)
 		return nil, err
 	}
-	tasks := taskList.Items
 
 	now := time.Now()
 

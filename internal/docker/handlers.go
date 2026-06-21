@@ -74,7 +74,12 @@ type wsClient struct {
 func RegisterDockerHandlers(cfg *config.Config) {
 	maxClients = cfg.MaxWSConnections
 
-	go inspectSwarmServices(cfg)
+	src, err := newMobySource()
+	if err != nil {
+		log.Fatal("Docker client error:", err)
+	}
+
+	go inspectSwarmServices(cfg, src)
 	go handleBroadcasts()
 
 	http.HandleFunc(cfg.ContextRoot+"ws", func(w http.ResponseWriter, r *http.Request) {
