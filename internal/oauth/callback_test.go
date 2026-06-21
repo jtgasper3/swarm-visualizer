@@ -15,19 +15,19 @@ import (
 )
 
 func TestHandleLogin_SetsStateAndNonce(t *testing.T) {
-	orig := oauthConfig
-	t.Cleanup(func() { oauthConfig = orig })
-	oauthConfig = &oauth2.Config{
-		ClientID:    "client-1",
-		RedirectURL: "https://app.example.com/callback",
-		Endpoint:    oauth2.Endpoint{AuthURL: "https://issuer.example.com/auth"},
+	a := &Authenticator{
+		cfg: &config.Config{ContextRoot: "/"},
+		oauthConfig: &oauth2.Config{
+			ClientID:    "client-1",
+			RedirectURL: "https://app.example.com/callback",
+			Endpoint:    oauth2.Endpoint{AuthURL: "https://issuer.example.com/auth"},
+		},
 	}
 
-	cfg := &config.Config{ContextRoot: "/"}
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rr := httptest.NewRecorder()
 
-	handleLogin(cfg, rr, req)
+	a.handleLogin(rr, req)
 
 	if rr.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusTemporaryRedirect)
@@ -61,9 +61,7 @@ func TestHandleCallback_NonceValidation(t *testing.T) {
 	}
 	const kid, issuer, client = "kid1", "https://issuer.example.com", "client-1"
 
-	origKeys, origCfg := signingKeys, oauthConfig
-	t.Cleanup(func() { signingKeys = origKeys; oauthConfig = origCfg })
-	signingKeys = &keyStore{
+	keys := &keyStore{
 		keys:        map[string]*rsa.PublicKey{kid: &key.PublicKey},
 		lastRefresh: time.Now(),
 	}
@@ -95,16 +93,20 @@ func TestHandleCallback_NonceValidation(t *testing.T) {
 		}))
 		defer tokenSrv.Close()
 
-		oauthConfig = &oauth2.Config{
-			ClientID: client,
-			Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL, AuthURL: "https://issuer.example.com/auth"},
+		a := &Authenticator{
+			cfg:  cfg,
+			keys: keys,
+			oauthConfig: &oauth2.Config{
+				ClientID: client,
+				Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL, AuthURL: "https://issuer.example.com/auth"},
+			},
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "/callback?code=abc&state=xyz", nil)
 		req.AddCookie(&http.Cookie{Name: "state", Value: "xyz"})
 		req.AddCookie(&http.Cookie{Name: "nonce", Value: cookieNonce})
 		rr := httptest.NewRecorder()
-		handleCallback(cfg, rr, req)
+		a.handleCallback(rr, req)
 		return rr
 	}
 
@@ -139,11 +141,11 @@ func TestHandleCallback_NonceValidation(t *testing.T) {
 }
 
 func TestHandleLogout_ClearsSession(t *testing.T) {
-	cfg := &config.Config{ContextRoot: "/"}
+	a := &Authenticator{cfg: &config.Config{ContextRoot: "/"}}
 	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
 	rr := httptest.NewRecorder()
 
-	handleLogout(cfg, rr, req)
+	a.handleLogout(rr, req)
 
 	if rr.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusTemporaryRedirect)

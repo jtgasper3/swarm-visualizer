@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
-func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
+// ValidateToken extracts the ID token from the request (cookie or bearer
+// header) and verifies it.
+func (a *Authenticator) ValidateToken(r *http.Request) (jwt.MapClaims, error) {
 	var rawIDToken string
 	cookie, err := r.Cookie("id_token")
 	if err != nil {
@@ -23,13 +24,13 @@ func ValidateToken(cfg *config.Config, r *http.Request) (jwt.MapClaims, error) {
 		rawIDToken = cookie.Value
 	}
 
-	return validateRawToken(cfg, rawIDToken)
+	return a.validateRawToken(rawIDToken)
 }
 
 // validateRawToken verifies an ID token's signature, issuer, and audience and
 // returns its claims. It is shared by the WebSocket request path and the OAuth
 // callback (which additionally checks the nonce).
-func validateRawToken(cfg *config.Config, rawIDToken string) (jwt.MapClaims, error) {
+func (a *Authenticator) validateRawToken(rawIDToken string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(rawIDToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -40,10 +41,10 @@ func validateRawToken(cfg *config.Config, rawIDToken string) (jwt.MapClaims, err
 			return nil, fmt.Errorf("missing kid in token header")
 		}
 
-		if signingKeys == nil {
+		if a.keys == nil {
 			return nil, fmt.Errorf("signing keys not initialized")
 		}
-		rsaPublicKey, ok := signingKeys.key(kid)
+		rsaPublicKey, ok := a.keys.key(kid)
 		if !ok {
 			return nil, fmt.Errorf("unknown kid: %s", kid)
 		}
@@ -59,12 +60,12 @@ func validateRawToken(cfg *config.Config, rawIDToken string) (jwt.MapClaims, err
 		return nil, fmt.Errorf("unauthorized")
 	}
 
-	if cfg.OAuthConfig.Issuer != "" {
+	if a.cfg.OAuthConfig.Issuer != "" {
 		issuer, err := claims.GetIssuer()
 		if err != nil {
 			return nil, fmt.Errorf("failed to read issuer claim: %v", err)
 		}
-		if issuer != cfg.OAuthConfig.Issuer {
+		if issuer != a.cfg.OAuthConfig.Issuer {
 			return nil, fmt.Errorf("ID token from unexpected issuer: %s", issuer)
 		}
 	}
@@ -75,7 +76,7 @@ func validateRawToken(cfg *config.Config, rawIDToken string) (jwt.MapClaims, err
 	}
 	validAudience := false
 	for _, aud := range audiences {
-		if aud == cfg.OAuthConfig.ClientID {
+		if aud == a.cfg.OAuthConfig.ClientID {
 			validAudience = true
 			break
 		}

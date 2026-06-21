@@ -9,7 +9,7 @@ import (
 )
 
 func TestReady(t *testing.T) {
-	h := newHub(&config.Config{})
+	h := newHub(&config.Config{}, nil)
 
 	if h.Ready() {
 		t.Fatal("expected not ready before the first frame is fanned out")

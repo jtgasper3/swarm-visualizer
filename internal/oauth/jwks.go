@@ -33,10 +33,6 @@ type keyStore struct {
 	lastRefresh time.Time
 }
 
-// signingKeys is populated during OIDC discovery (fetchWellKnownOIDCConfig)
-// before any token is validated.
-var signingKeys *keyStore
-
 // newKeyStore creates a key store for the given JWKS endpoint. Callers must
 // invoke refresh once to populate it before validating tokens.
 func newKeyStore(jwksURI string, httpClient *http.Client) *keyStore {

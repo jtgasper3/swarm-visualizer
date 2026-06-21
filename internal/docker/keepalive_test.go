@@ -49,7 +49,7 @@ func waitFor(t *testing.T, cond func() bool, timeout time.Duration) bool {
 func TestKeepalive_ReapsUnresponsivePeer(t *testing.T) {
 	setKeepalive(t, 50*time.Millisecond, 250*time.Millisecond)
 
-	h := newHub(&config.Config{ContextRoot: "/"})
+	h := newHub(&config.Config{ContextRoot: "/"}, nil)
 	srv := httptest.NewServer(http.HandlerFunc(h.handleConnections))
 	defer srv.Close()
 
@@ -77,7 +77,7 @@ func TestKeepalive_ResponsivePeerStaysConnected(t *testing.T) {
 	// deadline open even under the scheduling jitter of the race detector.
 	setKeepalive(t, 50*time.Millisecond, 600*time.Millisecond)
 
-	h := newHub(&config.Config{ContextRoot: "/"})
+	h := newHub(&config.Config{ContextRoot: "/"}, nil)
 	srv := httptest.NewServer(http.HandlerFunc(h.handleConnections))
 	defer srv.Close()
 

@@ -8,11 +8,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
-	"github.com/jtgasper3/swarm-visualizer/internal/oauth"
 )
+
+// TokenValidator validates the ID token on an incoming request and returns its
+// claims. It decouples the WebSocket handler from the oauth package; the running
+// server wires in oauth.Authenticator.ValidateToken.
+type TokenValidator func(*http.Request) (jwt.MapClaims, error)
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -34,6 +39,9 @@ const wsWriteTimeout = 5 * time.Second
 // to them. One Hub backs the running server; tests construct their own.
 type Hub struct {
 	cfg *config.Config
+	// validate authenticates a connection when cfg.AuthEnabled. It is nil when
+	// auth is disabled.
+	validate TokenValidator
 
 	mu sync.Mutex
 	// clients is the set of connected clients.
@@ -51,10 +59,12 @@ type Hub struct {
 	broadcast chan []byte
 }
 
-// newHub creates a Hub configured from cfg.
-func newHub(cfg *config.Config) *Hub {
+// newHub creates a Hub configured from cfg. validate may be nil when auth is
+// disabled.
+func newHub(cfg *config.Config, validate TokenValidator) *Hub {
 	return &Hub{
 		cfg:        cfg,
+		validate:   validate,
 		clients:    make(map[*wsClient]struct{}),
 		maxClients: cfg.MaxWSConnections,
 		broadcast:  make(chan []byte, 1),
@@ -103,8 +113,8 @@ type wsClient struct {
 	send chan []byte
 }
 
-func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config) *Hub {
-	hub := newHub(cfg)
+func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config, validate TokenValidator) *Hub {
+	hub := newHub(cfg, validate)
 
 	src, err := newMobySource()
 	if err != nil {
@@ -138,7 +148,7 @@ func (h *Hub) handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if cfg.AuthEnabled {
-		claims, err := oauth.ValidateToken(cfg, r)
+		claims, err := h.validate(r)
 		if err != nil {
 			ws.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 			ws.WriteMessage(websocket.TextMessage, []byte("401-Unauthorized"))
