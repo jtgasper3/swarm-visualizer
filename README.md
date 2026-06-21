@@ -149,6 +149,32 @@ networks:
 
 With this setup the application can no longer issue write commands to the daemon, so a compromise of the app cannot be escalated into control of the cluster.
 
+#### Run as a non-root user (optional hardening)
+
+The image runs as **root** by default so the simple, directly-mounted `/var/run/docker.sock` examples work out of the box (the socket is normally restricted to root or the host `docker` group). The app only ever reads the Docker API, so for defence-in-depth you can run it as a non-root user with `--user`.
+
+With the read-only socket proxy above the app never touches the host socket, so any uid works with no extra configuration:
+
+```yaml
+viz:
+  image: jtgasper3/swarm-visualizer:latest
+  user: "65534:65534"
+  environment:
+    DOCKER_HOST: tcp://dockerproxy:2375
+```
+
+If you run non-root **and** mount the socket directly, the process must also be in the socket's group or it gets `permission denied`. The gid is `0` on Docker Desktop (the socket is `root:root`) and usually the host `docker` group on Linux (`stat -c '%g' /var/run/docker.sock`):
+
+```yaml
+viz:
+  image: jtgasper3/swarm-visualizer:latest
+  user: "65534:65534"
+  group_add:
+    - "0"
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+```
+
 ### Authentication is not authorization
 
 Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies that a request carries a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**

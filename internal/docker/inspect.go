@@ -42,6 +42,13 @@ var (
 	stoppedTaskCache = make(map[string]cachedTask)
 )
 
+// Ready reports whether at least one successful swarm inspection has completed,
+// i.e. the Docker API is reachable and data has been published. It stays true
+// once the first poll succeeds, so it does not flap on transient errors.
+func Ready() bool {
+	return lastBroadcastedData.Load() != nil
+}
+
 func inspectSwarmServices(cfg *config.Config) {
 	sleepDuration := 1 * time.Second
 

@@ -131,22 +131,6 @@ func LoadConfig() *Config {
 	}
 }
 
-// Create function to print out config for debugging purposes
-func (c *Config) PrintConfig() {
-	log.Printf("Cluster Name: %s", c.ClusterName)
-	log.Printf("Context Root: %s", c.ContextRoot)
-	log.Printf("Listener Port: %s", c.ListenerPort)
-	log.Printf("Auth Enabled: %t", c.AuthEnabled)
-	log.Printf("Sensitive Data Paths: %v", c.SensitiveDataPaths)
-	log.Printf("OAuth Client ID: %s", c.OAuthConfig.ClientID)
-	log.Printf("OAuth Redirect URL: %s", c.OAuthConfig.RedirectURL)
-	log.Printf("OAuth Scopes: %v", c.OAuthConfig.Scopes)
-	log.Printf("OAuth Auth URL: %s", c.OAuthConfig.AuthURL)
-	log.Printf("OAuth Token URL: %s", c.OAuthConfig.TokenURL)
-	log.Printf("OAuth OIDC Well Known URL: %s", c.OAuthConfig.OIDCWellKnownURL)
-	log.Printf("OAuth Username Claim: %s", c.OAuthConfig.UsernameClaim)
-}
-
 func getEnv(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {

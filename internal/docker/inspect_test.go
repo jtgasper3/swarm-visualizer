@@ -8,6 +8,21 @@ import (
 	"github.com/moby/moby/api/types/swarm"
 )
 
+func TestReady(t *testing.T) {
+	orig := lastBroadcastedData.Load()
+	t.Cleanup(func() { lastBroadcastedData.Store(orig) })
+
+	lastBroadcastedData.Store(nil)
+	if Ready() {
+		t.Fatal("expected not ready before the first successful poll")
+	}
+
+	lastBroadcastedData.Store(&SwarmData{})
+	if !Ready() {
+		t.Fatal("expected ready once data has been published")
+	}
+}
+
 func TestSanitizeNodes_HideLabels(t *testing.T) {
 	nodes := []swarm.Node{{Spec: swarm.NodeSpec{Annotations: swarm.Annotations{Labels: map[string]string{"secret": "v", "keep": "v2"}}}}}
 	cfg := &config.Config{HideLabels: []string{"node"}}
