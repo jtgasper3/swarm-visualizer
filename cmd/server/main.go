@@ -25,12 +25,12 @@ func main() {
 	fs := http.FileServer(http.Dir("./static"))
 	mux.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
 
-	docker.RegisterDockerHandlers(mux, cfg)
+	hub := docker.RegisterDockerHandlers(mux, cfg)
 	oauth.RegisterOAuthHandlers(mux, cfg)
 
 	// Unauthenticated readiness endpoint at a fixed path (independent of
 	// CONTEXT_ROOT) for orchestrator health checks.
-	mux.Handle("/healthz", healthzHandler(docker.Ready))
+	mux.Handle("/healthz", healthzHandler(hub.Ready))
 
 	server := &http.Server{
 		Addr:              ":" + cfg.ListenerPort,
