@@ -21,6 +21,126 @@
     .v-list-subheader__text {
       flex: 1;
     }
+
+    /* --- filter drawer: one row grammar for nodes, stacks and networks --- */
+    .filter-section__header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 4px 2px;
+    }
+    .filter-section__title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      opacity: 0.75;
+    }
+    .filter-tally {
+      margin-left: auto;
+      flex: none;
+      font-size: 0.7rem;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.6;
+    }
+    /* Partial state stays in the primary hue on purpose: amber and red already
+       mean "degraded" on the node and task cards, and a filter is not a fault. */
+    .filter-tally--partial {
+      opacity: 1;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+      color: rgb(var(--v-theme-primary));
+      background: rgba(var(--v-theme-primary), 0.12);
+    }
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 1px 4px;
+      border-radius: 6px;
+    }
+    .filter-row:hover {
+      background: rgba(var(--v-theme-on-surface), 0.06);
+    }
+    .filter-row--indent {
+      padding-left: 26px;
+    }
+    .filter-row__label {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 3px 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      font-size: 0.875rem;
+      text-align: left;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .filter-row__label:focus-visible {
+      outline: 2px solid rgb(var(--v-theme-primary));
+      outline-offset: 1px;
+      border-radius: 3px;
+    }
+    .filter-row__meta {
+      flex: none;
+      margin-left: auto;
+      font-size: 0.7rem;
+      opacity: 0.55;
+    }
+    .filter-row__only {
+      flex: none;
+      visibility: hidden;
+    }
+    .filter-row:hover .filter-row__only,
+    .filter-row:focus-within .filter-row__only {
+      visibility: visible;
+    }
+    @media (hover: none) {
+      .filter-row__only { visibility: visible; }
+    }
+    .filter-toggles {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 4px 8px;
+      padding: 6px 4px;
+    }
+    /* Three segmented groups have to fit a 280px drawer, so drop the stock
+       64px min-width and let the labels size the buttons. */
+    .filter-toggles .v-btn {
+      min-width: 0;
+      padding-inline: 7px;
+      font-size: 0.65rem;
+      letter-spacing: 0.02em;
+    }
+    .filter-toggles .v-btn-group {
+      width: 100%;
+    }
+    .filter-toggles__label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      opacity: 0.6;
+    }
+    .filter-status {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 4px 2px;
+    }
+    .app-bar-filters {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      overflow: hidden;
+    }
   </style>
   
   <script type="importmap">
@@ -51,7 +171,15 @@
         </v-app-bar-title>
 
         <template #append>
-            <div class="ga-2 align-center">
+            <div class="d-flex ga-2 align-center">
+              <!-- A filtered view and a real outage look alike, so say so in the bar. -->
+              <div v-if="activeFilters.length && $vuetify.display.mdAndUp" class="app-bar-filters">
+                <v-chip v-for="chip in activeFilters" :key="chip.key" size="x-small" label color="primary" variant="tonal">{{ chip.text }}</v-chip>
+              </div>
+              <v-chip v-else-if="activeFilters.length" size="small" label color="primary" variant="tonal" prepend-icon="mdi-filter"
+                :aria-label="activeFilters.length + ' filters active'">{{ activeFilters.length }}</v-chip>
+              <v-btn v-if="activeFilters.length" size="small" variant="text" @click="resetFilters()">Reset</v-btn>
+
               <v-btn v-if="authEnabled" icon="mdi-logout" title="Log out" aria-label="Log out" @click="logout()"></v-btn>
               <!-- <v-btn color="medium-emphasis" icon="mdi-email-outline">
                 <v-badge color="error" content="1" dot>
@@ -78,141 +206,100 @@
       </v-app-bar>
 
       <v-navigation-drawer v-model="drawer" color="surface-light" width="280" aria-label="Filter and Sorting">
-        <div class="px-2">
+        <div class="px-2 pb-6">
           <v-defaults-provider :defaults="vuetifyDefaults">
-            <v-list v-model:selected="filters.nodesSelection" nav select-strategy="leaf" aria-labelledby="filtering">
-              <v-list-subheader id="filtering" class="font-weight-bold">FILTER</v-list-subheader>
-              
-              <v-list-subheader class="font-weight-bold">NODES
-                (<v-btn density="compact" icon="mdi-checkbox-marked" height="20" width="20" color="primary" @click.stop="selectNodes('all')" aria-label="Select all nodes"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-blank-outline" height="20" width="20" color="primary" @click="selectNodes('none')" aria-label="Deselect all nodes"></v-btn>)
-              </v-list-subheader>
-              <v-list-item v-for="node in sortedNodes" :key="node.ID" :title="node.Description.Hostname" :value="node.ID">
-                <template v-slot:prepend="{ isSelected, select }">
-                  <v-list-item-action start>
-                    <v-checkbox-btn :model-value="isSelected" @update:model-value="select"></v-checkbox-btn>
-                  </v-list-item-action>
+
+            <!-- Search leads: it narrows this tree as well as the cards. -->
+            <div class="pt-3">
+              <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" id="search"
+                hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify"
+                rounded="lg" variant="outlined" aria-label="Search stacks, services, nodes and networks">
+                <template #clear="{ props: clearProps }">
+                  <v-icon v-bind="clearProps" size="18" />
                 </template>
-              </v-list-item>
-            </v-list>
+              </v-text-field>
+            </div>
 
-            <v-list nav aria-labelledby="roles">
-              <v-list-subheader id="roles" class="font-weight-bold">ROLE</v-list-subheader>
-              <v-list-item>
-                <v-btn-toggle
-                  v-model="filters.nodeRoles"
-                  aria-labelledby="roles"
-                >
-                  <v-btn value="manager">Managers</v-btn>
-                  <v-btn :value="false">Both</v-btn>
-                  <v-btn value="worker">Workers</v-btn>
-                </v-btn-toggle>
-              </v-list-item>
-            </v-list>
+            <v-btn v-if="matchingServiceIds.length" block class="mt-2" variant="tonal" color="primary" size="small"
+              @click="setSelection('services', matchingServiceIds, true)">
+              Select {{ matchingServiceIds.length }} matching service{{ matchingServiceIds.length === 1 ? '' : 's' }}
+            </v-btn>
 
-            <v-list v-model:opened="filters.openedStacks" v-model:selected="filters.servicesSelection" nav select-strategy="leaf" aria-labelledby="services">
-              <v-list-subheader class="font-weight-bold">
-                <div style="display: flex; align-items: center; width: 100%;"><span id="services">STACKS</span>&nbsp;(<v-btn density="compact" icon="mdi-checkbox-multiple-marked" height="20" width="20" color="primary" @click="selectServices('all')" aria-label="Select all services"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-multiple-blank-outline" height="20" width="20" color="primary" @click="selectServices('none')" aria-label="Deselect all services"></v-btn>)<span class="ms-auto"><v-btn density="compact" icon="mdi-unfold-more-horizontal" height="20" width="20" @click="expandAllStacks()" aria-label="Expand all stacks"></v-btn>/<v-btn density="compact" icon="mdi-unfold-less-horizontal" height="20" width="20" @click="collapseAllStacks()" aria-label="Collapse all stacks"></v-btn></span></div>
-              </v-list-subheader>
-              <v-list-group v-for="stack in sortedServicesGroups" :key="stack.name" :value="stack.name">
-                <template v-slot:activator="{ props }">
-                  <v-list-item v-bind="props">
-                    <v-list-item-title class="font-weight-bold">{{ stack.name }}
-                      (<v-btn density="compact" icon="mdi-checkbox-marked" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'on')" :aria-label="'Select all services in ' + stack.name"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-blank-outline" height="20" width="20" color="primary" @click.stop="toggleStack(stack, 'off')" :aria-label="'Deselect all services in ' + stack.name"></v-btn>)
-                    </v-list-item-title>
-                  </v-list-item>
+            <div class="filter-status">
+              <v-chip v-for="chip in filterSummary" :key="chip.key" size="x-small" label
+                :color="chip.active ? 'primary' : undefined" :variant="chip.active ? 'tonal' : 'text'">{{ chip.text }}</v-chip>
+              <v-btn v-if="activeFilters.length" class="ms-auto" color="primary" @click="resetFilters()">Reset</v-btn>
+            </div>
+
+            <div class="filter-toggles">
+              <span id="roles" class="filter-toggles__label">ROLE</span>
+              <v-btn-toggle v-model="filters.nodeRoles" aria-labelledby="roles">
+                <v-btn value="manager">Mgr</v-btn>
+                <v-btn :value="false">Any</v-btn>
+                <v-btn value="worker">Wkr</v-btn>
+              </v-btn-toggle>
+
+              <span id="modes" class="filter-toggles__label">MODE</span>
+              <v-btn-toggle v-model="filters.serviceMode" aria-labelledby="modes">
+                <v-btn value="replicated">Repl</v-btn>
+                <v-btn :value="false">Any</v-btn>
+                <v-btn value="global">Global</v-btn>
+              </v-btn-toggle>
+
+              <span id="task-state" class="filter-toggles__label">STATE</span>
+              <v-btn-toggle v-model="filters.taskStateFilter" aria-labelledby="task-state">
+                <v-btn value="healthy">Healthy</v-btn>
+                <v-btn :value="false">Any</v-btn>
+                <v-btn value="failed">Stopped</v-btn>
+              </v-btn-toggle>
+            </div>
+
+            <filter-section title="NODES" :state="nodesState" :open="isSectionOpen('NODES')"
+              @update:open="toggleSection('NODES')" @toggle="toggleSelection('nodes', allNodeIds)">
+              <filter-row v-for="node in visibleNodes" :key="node.ID"
+                :title="node.Description.Hostname" :selected="filters.nodesSelection.includes(node.ID)"
+                :meta="node.Spec.Role" show-only
+                @toggle="toggleSelection('nodes', [node.ID])" @only="onlySelection('nodes', [node.ID])"></filter-row>
+            </filter-section>
+
+            <filter-section title="STACKS" :state="servicesState" :open="isSectionOpen('STACKS')"
+              @update:open="toggleSection('STACKS')" @toggle="toggleSelection('services', allServiceIds)">
+              <template v-for="stack in visibleServicesGroups" :key="stack.name">
+                <filter-row :title="stack.name" :state="stackState(stack)" strong show-only
+                  :expandable="!searchActive" :open="isStackOpen(stack.name)"
+                  @toggle="toggleSelection('services', stackServiceIds(stack))"
+                  @only="onlySelection('services', stackServiceIds(stack))"
+                  @update:open="toggleStackOpen(stack.name)"></filter-row>
+
+                <template v-if="isStackOpen(stack.name)">
+                  <filter-row v-for="service in stack.services" :key="service.ID" indent
+                    :title="createServiceName(service)" :selected="filters.servicesSelection.includes(service.ID)"
+                    @toggle="toggleSelection('services', [service.ID])">
+                    <template #append>
+                      <My-Details :service="service" v-slot="props">
+                        <v-btn icon="mdi-chevron-right" v-bind="props" aria-label="Service Details"></v-btn>
+                      </My-Details>
+                    </template>
+                  </filter-row>
                 </template>
+              </template>
+            </filter-section>
 
-                <v-list-item v-for="service in stack.services" :key="service.ID" :title="createServiceName(service)" :value="service.ID">
-                  <template v-slot:prepend="{ isSelected, select }">
-                    <v-list-item-action start>
-                      <v-checkbox-btn :model-value="isSelected" @update:model-value="select"></v-checkbox-btn>
-                    </v-list-item-action>
-                  </template>
-                  <template v-slot:append>
-                    <My-Details :service="service" v-slot="props">
-                      <v-btn icon="mdi-chevron-right" v-bind="props" aria-label="Service Details"></v-btn> 
-                    </My-Details>
-                  </template>
-                </v-list-item>
-              </v-list-group>
-            </v-list>
+            <filter-section title="NETWORKS" :state="networksState" :open="isSectionOpen('NETWORKS')"
+              @update:open="toggleSection('NETWORKS')" @toggle="toggleSelection('networks', allNetworkIds)">
+              <filter-row v-for="network in visibleNetworks" :key="network.Id"
+                :title="network.Name" :selected="filters.networksSelection.includes(network.Id)" show-only
+                @toggle="toggleSelection('networks', [network.Id])" @only="onlySelection('networks', [network.Id])"></filter-row>
+              <filter-row v-if="!searchActive && networks.length" title="(none)" :selected="filters.networksSelection.includes('(none)')"
+                @toggle="toggleSelection('networks', ['(none)'])"></filter-row>
+            </filter-section>
 
-            <v-list nav aria-labelledby="modes">
-              <v-list-subheader id="modes" class="font-weight-bold">MODE</v-list-subheader>
-              <v-list-item>
-                <v-btn-toggle v-model="filters.serviceMode" aria-labelledby="modes">
-                  <v-btn value="replicated">Replicated</v-btn>
-                  <v-btn :value="false">Both</v-btn>
-                  <v-btn value="global">Global</v-btn>
-                </v-btn-toggle>
-              </v-list-item>
-            </v-list>
+            <div class="filter-section__header"><span class="filter-section__title">SORT</span></div>
+            <v-select flat hide-details color="primary" bg-color="surface" :items="['Service Name', 'Created']"
+              label="Sort by" :list-props="{ density: 'compact', rounded: 't-0' }" v-model="sort" single-line variant="solo"></v-select>
 
-            <v-list nav aria-labelledby="task-state">
-              <v-list-subheader id="task-state" class="font-weight-bold">TASK STATE</v-list-subheader>
-              <v-list-item>
-                <v-btn-toggle v-model="filters.taskStateFilter" aria-labelledby="task-state">
-                  <v-btn value="healthy">Healthy</v-btn>
-                  <v-btn :value="false">Both</v-btn>
-                  <v-btn value="failed">Stopped</v-btn>
-                </v-btn-toggle>
-              </v-list-item>
-            </v-list>
-
-            <!-- <v-list v-if="filters.replicasIncluded" density="comfortable" nav slim>
-                <v-list-subheader class="font-weight-bold">REPLICAS</v-list-subheader>
-                <v-list-item>
-                  <v-range-slider v-model="filters.replicas" :max="5" :min="0" :step="1" thumb-label density="compact"></v-slider>
-                </v-list-item>
-              </v-list> -->
-
-            <v-list v-model:selected="filters.networksSelection" nav select-strategy="leaf" aria-labelledby="networks">
-              <v-list-subheader class="font-weight-bold"><span id="networks">NETWORKS</span>
-                (<v-btn density="compact" icon="mdi-checkbox-marked" height="20" width="20" color="primary" @click="selectNetworks('all')" aria-label="Select all networks"></v-btn>/<v-btn density="compact" icon="mdi-checkbox-blank-outline" height="20" width="20" color="primary" @click="selectNetworks('none')" aria-label="Deselect all networks"></v-btn>)
-              </v-list-subheader>
-              <v-list-item v-for="network in sortedNetworks" :key="network.Id" :title="network.Name" :value="network.Id">
-                <template v-slot:prepend="{ isSelected, select }">
-                  <v-list-item-action start>
-                    <v-checkbox-btn :model-value="isSelected" @update:model-value="select"></v-checkbox-btn>
-                  </v-list-item-action>
-                </template>
-              </v-list-item>
-              <v-list-item title="(none)" value="(none)">
-                <template v-slot:prepend="{ isSelected, select }">
-                  <v-list-item-action start>
-                    <v-checkbox-btn :model-value="isSelected" @update:model-value="select"></v-checkbox-btn>
-                  </v-list-item-action>
-                </template>
-              </v-list-item>
-            </v-list>
-
-            <v-list nav aria-labelledby="search">
-              <v-list-item>
-                <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" id="search"
-                  hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify" rounded="lg" variant="outlined">
-                  <v-divider class="me-2 align-self-center" length="20" vertical />
-
-                  <template #clear="{ props: clearProps }">
-                    <v-icon v-bind="clearProps" size="18" />
-                  </template>
-                </v-text-field>
-              </v-list-item>
-            </v-list>
-            
-            <v-list nav aria-labelledby="sorting">
-              <v-list-subheader id="sorting" class="font-weight-bold">SORT</v-list-subheader>
-
-              <v-list-item>
-                <v-select flat hide-details color="primary" bg-color="surface"  :items="['Service Name', 'Created']" label="Sort by"
-                  :list-props="{ density: 'compact', rounded: 't-0' }" v-model="sort" single-line variant="solo" />
-              </v-list-item>
-            </v-list>
-          </div>
-
-          <template #append>
-            <v-divider />
-          </template>
-        </v-defaults-provider>
+          </v-defaults-provider>
+        </div>
       </v-navigation-drawer>
       <v-snackbar :model-value="wsState === 'reconnecting'" color="error" location="top" :timeout="-1">
         Connection lost — reconnecting...
@@ -252,7 +339,10 @@
     import { createVuetify } from 'vuetify';
     import { useStorage, refDebounced } from '@vueuse/core';
 
+    import { serviceMatchesQuery, stackNameOf } from './utils.js';
+
     import MyDetails from './details.js';
+    import { FilterRow, FilterSection } from './filters.js';
     import Node from './node.js';
     import Websocket from './websocket.js';
 
@@ -268,7 +358,7 @@
         const authEnabled = shallowRef(false);
         const drawer = useStorage('drawer', true);
         const wsState = shallowRef('connecting');
-        const filters = useStorage('filters.4', {
+        const filters = useStorage('filters.5', {
           filterText: '',
           networksSelection: new Array(),
           nodesSelection: new Array(),
@@ -280,6 +370,7 @@
           serviceMode: false,
           taskStateFilter: false,
           openedStacks: ['default'],
+          openedSections: ['NODES', 'STACKS', 'NETWORKS'],
           selectionsInitialized: false,
           // replicas: [0, 10]
         },
@@ -336,7 +427,7 @@
           [...services.value]
           .sort((a, b) => a.Spec.Name.localeCompare(b.Spec.Name))
           .forEach(service => {
-            const stackName = service.Spec.Labels?.['com.docker.stack.namespace'] || 'default';
+            const stackName = stackNameOf(service);
             
             if (!stackMap.has(stackName)) {
               stackMap.set(stackName, { name: stackName, services: [] });
@@ -355,6 +446,14 @@
             return node.Spec.Role === filters.value.nodeRoles;
           })
           .filter(node => filters.value.nodesSelection.includes(node.ID))
+          // Searching a hostname narrows to that node; searching a service name
+          // keeps the nodes actually running it. Without this the drawer says
+          // "swarm-wkr-01" while every node card stays up holding no tasks.
+          .filter(node => {
+            if (!debouncedQuery.value) return true;
+            if (node.Description.Hostname.toLowerCase().includes(debouncedQuery.value)) return true;
+            return (node.tasks || []).some(task => serviceMatchesQuery(task.service, debouncedQuery.value));
+          })
         );
 
         function createServiceName(service) {
@@ -372,53 +471,127 @@
           window.location.href = window.location.pathname + 'logout';
         }
 
-        function selectNetworks(option) {
-          if (option === 'all') {
-            const uniqueItems = networks.value.filter(network => !filters.value.networksSelection.includes(network.Id)).map((network => network.Id))
-            filters.value.networksSelection.push(...uniqueItems)
-            if (!filters.value.networksSelection.includes('(none)')) {
-              filters.value.networksSelection.push('(none)')
-            }
-          } else {
-            filters.value.networksSelection.length = 0
-          }
+        // Selection lives in exactly one place per section: the flat *Selection
+        // array. Every parent's checkbox and n/m tally is derived from it, so a
+        // stack and its services can never disagree.
+        const SELECTION_PROPS = {
+          nodes: 'nodesSelection',
+          services: 'servicesSelection',
+          networks: 'networksSelection',
+        };
+
+        const allNodeIds = computed(() => nodes.value.map(node => node.ID));
+        const allServiceIds = computed(() => services.value.map(service => service.ID));
+        const allNetworkIds = computed(() => networks.value.length
+          ? [...networks.value.map(network => network.Id), '(none)']
+          : []);
+
+        function selectionState(key, ids) {
+          const selected = filters.value[SELECTION_PROPS[key]];
+          const on = ids.reduce((count, id) => count + (selected.includes(id) ? 1 : 0), 0);
+          return { on, total: ids.length, kind: on === ids.length ? 'all' : on === 0 ? 'none' : 'some' };
         }
 
-        function selectNodes(option) {
-          if (option === 'all') {
-            const uniqueItems = nodes.value.filter(node => !filters.value.nodesSelection.includes(node.ID)).map((node => node.ID))
-            filters.value.nodesSelection.push(...uniqueItems)
-          } else {
-            filters.value.nodesSelection.length = 0
-          }
-        }
-        
-        function selectServices(option) {
-          if (option === 'all') {
-            const uniqueItems = services.value.filter(service => !filters.value.servicesSelection.includes(service.ID)).map((service => service.ID))
-            filters.value.servicesSelection.push(...uniqueItems)
-          } else {
-            filters.value.servicesSelection.length = 0
-          }
+        function setSelection(key, ids, on) {
+          const prop = SELECTION_PROPS[key];
+          const next = new Set(filters.value[prop]);
+          ids.forEach(id => on ? next.add(id) : next.delete(id));
+          filters.value[prop] = [...next];
         }
 
-        function expandAllStacks() {
-          filters.value.openedStacks = sortedServicesGroups.value.map(stack => stack.name);
+        function toggleSelection(key, ids) {
+          setSelection(key, ids, selectionState(key, ids).kind !== 'all');
         }
 
-        function collapseAllStacks() {
-          filters.value.openedStacks = [];
+        function onlySelection(key, ids) {
+          filters.value[SELECTION_PROPS[key]] = [...ids];
         }
 
-        function toggleStack(stack, state) {
-          stack.services.forEach((service) => {
-            const index = filters.value.servicesSelection.indexOf(service.ID);
-            if (index > -1 && state === 'off') {
-              filters.value.servicesSelection.splice(index, 1);
-            } else if (index === -1 && state === 'on') {
-              filters.value.servicesSelection.push(service.ID);
-            }
-          });
+        const nodesState = computed(() => selectionState('nodes', allNodeIds.value));
+        const servicesState = computed(() => selectionState('services', allServiceIds.value));
+        const networksState = computed(() => selectionState('networks', allNetworkIds.value));
+
+        function stackServiceIds(stack) {
+          return stack.services.map(service => service.ID);
+        }
+
+        function stackState(stack) {
+          return selectionState('services', stackServiceIds(stack));
+        }
+
+        function isSectionOpen(name) {
+          return filters.value.openedSections.includes(name);
+        }
+
+        function toggleSection(name) {
+          const open = filters.value.openedSections;
+          const index = open.indexOf(name);
+          index > -1 ? open.splice(index, 1) : open.push(name);
+        }
+
+        // While searching, every stack holding a match is open; the chevron is
+        // hidden so expansion never fights the query.
+        function isStackOpen(name) {
+          return searchActive.value || filters.value.openedStacks.includes(name);
+        }
+
+        function toggleStackOpen(name) {
+          const open = filters.value.openedStacks;
+          const index = open.indexOf(name);
+          index > -1 ? open.splice(index, 1) : open.push(name);
+        }
+
+        const query = computed(() => (filters.value.filterText || '').trim().toLowerCase());
+        // The cards render off the debounced text, so match against the same
+        // value or a card and its task list disagree for a beat.
+        const debouncedQuery = computed(() => (debouncedFilterText.value || '').trim().toLowerCase());
+        const searchActive = computed(() => query.value.length > 0);
+
+        const matchingServiceIds = computed(() => searchActive.value
+          ? services.value.filter(service => serviceMatchesQuery(service, query.value)).map(service => service.ID)
+          : []);
+
+        const visibleNodes = computed(() => searchActive.value
+          ? sortedNodes.value.filter(node => node.Description.Hostname.toLowerCase().includes(query.value))
+          : sortedNodes.value);
+
+        const visibleNetworks = computed(() => searchActive.value
+          ? sortedNetworks.value.filter(network => network.Name.toLowerCase().includes(query.value))
+          : sortedNetworks.value);
+
+        const visibleServicesGroups = computed(() => {
+          if (!searchActive.value) return sortedServicesGroups.value;
+          return sortedServicesGroups.value
+            .map(stack => ({
+              name: stack.name,
+              services: stack.services.filter(service => serviceMatchesQuery(service, query.value)),
+            }))
+            .filter(stack => stack.services.length > 0);
+        });
+
+        const filterSummary = computed(() => {
+          const chips = [
+            { key: 'nodes', text: `Nodes ${nodesState.value.on}/${nodesState.value.total}`, active: nodesState.value.kind !== 'all' },
+            { key: 'services', text: `Services ${servicesState.value.on}/${servicesState.value.total}`, active: servicesState.value.kind !== 'all' },
+            { key: 'networks', text: `Networks ${networksState.value.on}/${networksState.value.total}`, active: networksState.value.kind !== 'all' },
+          ];
+          if (filters.value.nodeRoles) chips.push({ key: 'role', text: filters.value.nodeRoles === 'manager' ? 'Managers' : 'Workers', active: true });
+          if (filters.value.serviceMode) chips.push({ key: 'mode', text: filters.value.serviceMode === 'global' ? 'Global' : 'Replicated', active: true });
+          if (filters.value.taskStateFilter) chips.push({ key: 'state', text: filters.value.taskStateFilter === 'healthy' ? 'Healthy' : 'Stopped', active: true });
+          if (searchActive.value) chips.push({ key: 'text', text: `"${filters.value.filterText.trim()}"`, active: true });
+          return chips;
+        });
+
+        const activeFilters = computed(() => filterSummary.value.filter(chip => chip.active));
+
+        function resetFilters() {
+          filters.value.nodesSelection = [...allNodeIds.value];
+          filters.value.servicesSelection = [...allServiceIds.value];
+          filters.value.networksSelection = [...allNetworkIds.value];
+          filters.value.nodeRoles = false;
+          filters.value.serviceMode = false;
+          filters.value.taskStateFilter = false;
+          filters.value.filterText = '';
         }
 
         function updateReceivedData(data) {
@@ -431,7 +604,9 @@
           if (!filters.value.selectionsInitialized) {
             filters.value.nodesSelection = data.nodes.map(node => node.ID);
             filters.value.servicesSelection = data.services.map(service => service.ID);
-            filters.value.networksSelection = data.networks.map(network => network.Id);
+            // '(none)' is a real selectable bucket for services attached to no
+            // network; seed it too, or those services are hidden on first load.
+            filters.value.networksSelection = [...data.networks.map(network => network.Id), '(none)'];
             filters.value.knownNodeIds = [...filters.value.nodesSelection];
             filters.value.knownServiceIds = [...filters.value.servicesSelection];
             filters.value.knownNetworkIds = [...filters.value.networksSelection];
@@ -523,18 +698,37 @@
           createServiceName,
           getAuthorized,
           logout,
-          selectNetworks,
-          selectNodes,
-          selectServices,
-          expandAllStacks,
-          collapseAllStacks,
-          toggleStack,
+          allNodeIds,
+          allServiceIds,
+          allNetworkIds,
+          nodesState,
+          servicesState,
+          networksState,
+          stackServiceIds,
+          stackState,
+          setSelection,
+          toggleSelection,
+          onlySelection,
+          isSectionOpen,
+          toggleSection,
+          isStackOpen,
+          toggleStackOpen,
+          searchActive,
+          matchingServiceIds,
+          visibleNodes,
+          visibleNetworks,
+          visibleServicesGroups,
+          filterSummary,
+          activeFilters,
+          resetFilters,
           updateReceivedData,
           onSystemThemeChange,
         };
       },
 
       components: {
+        FilterRow,
+        FilterSection,
         MyDetails,
         Node,
         Websocket,

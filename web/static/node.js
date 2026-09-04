@@ -1,6 +1,6 @@
 import Details from './details.js';
 import Task from './task.js';
-import { formatBytes } from './utils.js';
+import { formatBytes, serviceMatchesQuery } from './utils.js';
 
 export default {
   name: 'Node',
@@ -101,11 +101,15 @@ export default {
       return tasks
         .filter(task => task.service != null)
         .filter(task => {
-          const filterText = this.filters.filterText ? this.filters.filterText.trim() : '';
-          if (filterText.length === 0 || task.service.Spec.Name.toLowerCase().includes(filterText.toLowerCase())) {
+          const filterText = this.filters.filterText ? this.filters.filterText.trim().toLowerCase() : '';
+          if (filterText.length === 0) {
             return true;
           }
-          return false;
+          // A hostname match selects the whole node, not a subset of its tasks.
+          if (this.node.Description.Hostname.toLowerCase().includes(filterText)) {
+            return true;
+          }
+          return serviceMatchesQuery(task.service, filterText);
         })
         .filter(task => {
           if (!this.filters.serviceMode) {
