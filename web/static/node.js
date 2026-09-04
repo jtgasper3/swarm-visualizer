@@ -1,6 +1,6 @@
 import Details from './details.js';
 import Task from './task.js';
-import { formatBytes } from './utils.js';
+import { formatBytes, serviceMatchesQuery } from './utils.js';
 
 export default {
   name: 'Node',
@@ -109,7 +109,7 @@ export default {
           if (this.node.Description.Hostname.toLowerCase().includes(filterText)) {
             return true;
           }
-          return task.service.Spec.Name.toLowerCase().includes(filterText);
+          return serviceMatchesQuery(task.service, filterText);
         })
         .filter(task => {
           if (!this.filters.serviceMode) {

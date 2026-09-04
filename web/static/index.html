@@ -213,7 +213,7 @@
             <div class="pt-3">
               <v-text-field v-model="filters.filterText" color="primary" bg-color="surface" id="search"
                 hide-details clearable persistent-clear placeholder="Search" prepend-inner-icon="mdi-magnify"
-                rounded="lg" variant="outlined" aria-label="Search stacks, services and nodes">
+                rounded="lg" variant="outlined" aria-label="Search stacks, services, nodes and networks">
                 <template #clear="{ props: clearProps }">
                   <v-icon v-bind="clearProps" size="18" />
                 </template>
@@ -339,6 +339,8 @@
     import { createVuetify } from 'vuetify';
     import { useStorage, refDebounced } from '@vueuse/core';
 
+    import { serviceMatchesQuery } from './utils.js';
+
     import MyDetails from './details.js';
     import { FilterRow, FilterSection } from './filters.js';
     import Node from './node.js';
@@ -450,8 +452,7 @@
           .filter(node => {
             if (!debouncedQuery.value) return true;
             if (node.Description.Hostname.toLowerCase().includes(debouncedQuery.value)) return true;
-            return (node.tasks || []).some(task => task.service
-              && task.service.Spec.Name.toLowerCase().includes(debouncedQuery.value));
+            return (node.tasks || []).some(task => serviceMatchesQuery(task.service, debouncedQuery.value));
           })
         );
 
