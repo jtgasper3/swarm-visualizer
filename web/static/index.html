@@ -339,7 +339,7 @@
     import { createVuetify } from 'vuetify';
     import { useStorage, refDebounced } from '@vueuse/core';
 
-    import { serviceMatchesQuery } from './utils.js';
+    import { serviceMatchesQuery, stackNameOf } from './utils.js';
 
     import MyDetails from './details.js';
     import { FilterRow, FilterSection } from './filters.js';
@@ -427,7 +427,7 @@
           [...services.value]
           .sort((a, b) => a.Spec.Name.localeCompare(b.Spec.Name))
           .forEach(service => {
-            const stackName = service.Spec.Labels?.['com.docker.stack.namespace'] || 'default';
+            const stackName = stackNameOf(service);
             
             if (!stackMap.has(stackName)) {
               stackMap.set(stackName, { name: stackName, services: [] });
