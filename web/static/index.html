@@ -97,7 +97,7 @@
       visibility: hidden;
     }
     .filter-row:hover .filter-row__only,
-    .filter-row__only:focus-within {
+    .filter-row:focus-within .filter-row__only {
       visibility: visible;
     }
     @media (hover: none) {
@@ -290,7 +290,7 @@
               <filter-row v-for="network in visibleNetworks" :key="network.Id"
                 :title="network.Name" :selected="filters.networksSelection.includes(network.Id)" show-only
                 @toggle="toggleSelection('networks', [network.Id])" @only="onlySelection('networks', [network.Id])"></filter-row>
-              <filter-row v-if="!searchActive" title="(none)" :selected="filters.networksSelection.includes('(none)')"
+              <filter-row v-if="!searchActive && networks.length" title="(none)" :selected="filters.networksSelection.includes('(none)')"
                 @toggle="toggleSelection('networks', ['(none)'])"></filter-row>
             </filter-section>
 
@@ -444,6 +444,15 @@
             return node.Spec.Role === filters.value.nodeRoles;
           })
           .filter(node => filters.value.nodesSelection.includes(node.ID))
+          // Searching a hostname narrows to that node; searching a service name
+          // keeps the nodes actually running it. Without this the drawer says
+          // "swarm-wkr-01" while every node card stays up holding no tasks.
+          .filter(node => {
+            if (!debouncedQuery.value) return true;
+            if (node.Description.Hostname.toLowerCase().includes(debouncedQuery.value)) return true;
+            return (node.tasks || []).some(task => task.service
+              && task.service.Spec.Name.toLowerCase().includes(debouncedQuery.value));
+          })
         );
 
         function createServiceName(service) {
@@ -472,12 +481,14 @@
 
         const allNodeIds = computed(() => nodes.value.map(node => node.ID));
         const allServiceIds = computed(() => services.value.map(service => service.ID));
-        const allNetworkIds = computed(() => [...networks.value.map(network => network.Id), '(none)']);
+        const allNetworkIds = computed(() => networks.value.length
+          ? [...networks.value.map(network => network.Id), '(none)']
+          : []);
 
         function selectionState(key, ids) {
           const selected = filters.value[SELECTION_PROPS[key]];
           const on = ids.reduce((count, id) => count + (selected.includes(id) ? 1 : 0), 0);
-          return { on, total: ids.length, kind: on === 0 ? 'none' : on === ids.length ? 'all' : 'some' };
+          return { on, total: ids.length, kind: on === ids.length ? 'all' : on === 0 ? 'none' : 'some' };
         }
 
         function setSelection(key, ids, on) {
@@ -530,6 +541,9 @@
         }
 
         const query = computed(() => (filters.value.filterText || '').trim().toLowerCase());
+        // The cards render off the debounced text, so match against the same
+        // value or a card and its task list disagree for a beat.
+        const debouncedQuery = computed(() => (debouncedFilterText.value || '').trim().toLowerCase());
         const searchActive = computed(() => query.value.length > 0);
 
         const matchingServiceIds = computed(() => searchActive.value
