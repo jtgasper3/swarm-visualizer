@@ -548,7 +548,7 @@
         const searchActive = computed(() => query.value.length > 0);
 
         const matchingServiceIds = computed(() => searchActive.value
-          ? services.value.filter(service => service.Spec.Name.toLowerCase().includes(query.value)).map(service => service.ID)
+          ? services.value.filter(service => serviceMatchesQuery(service, query.value)).map(service => service.ID)
           : []);
 
         const visibleNodes = computed(() => searchActive.value
@@ -562,9 +562,10 @@
         const visibleServicesGroups = computed(() => {
           if (!searchActive.value) return sortedServicesGroups.value;
           return sortedServicesGroups.value
-            .map(stack => stack.name.toLowerCase().includes(query.value)
-              ? stack
-              : { name: stack.name, services: stack.services.filter(service => service.Spec.Name.toLowerCase().includes(query.value)) })
+            .map(stack => ({
+              name: stack.name,
+              services: stack.services.filter(service => serviceMatchesQuery(service, query.value)),
+            }))
             .filter(stack => stack.services.length > 0);
         });
 
