@@ -47,31 +47,65 @@ func NewAuthenticator(cfg *config.Config) (*Authenticator, error) {
 	return a, nil
 }
 
-// clientIP returns the real client IP. If the direct connection is from a
-// trusted proxy, X-Real-IP and X-Forwarded-For headers are consulted instead.
+// clientIP returns the address a request is rate-limited by. The forwarding
+// headers are consulted only when the direct connection comes from a trusted
+// proxy.
+//
+// X-Forwarded-For is read from the right. Each proxy appends the address it
+// received the request from, so the right-most entry that is not itself a
+// trusted proxy was written by a proxy we trust, while everything to its left
+// arrived from the client and can say anything. X-Real-IP is used only when
+// X-Forwarded-For has no entries, for a proxy configured to send it alone.
 func clientIP(r *http.Request, trustedProxies []*net.IPNet) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
+	peer := hostOnly(r.RemoteAddr)
+	if !isTrustedProxy(peer, trustedProxies) {
+		return peer
 	}
 
-	if len(trustedProxies) > 0 {
-		if remoteIP := net.ParseIP(host); remoteIP != nil {
-			for _, cidr := range trustedProxies {
-				if cidr.Contains(remoteIP) {
-					if ip := r.Header.Get("X-Real-IP"); ip != "" {
-						return strings.TrimSpace(ip)
-					}
-					if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-						return strings.TrimSpace(strings.SplitN(fwd, ",", 2)[0])
-					}
-					break
-				}
-			}
+	// A request can carry the header more than once; the lines read as one list.
+	forwarded := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	client := ""
+	for i := len(forwarded) - 1; i >= 0; i-- {
+		entry := hostOnly(strings.TrimSpace(forwarded[i]))
+		if entry == "" {
+			continue
+		}
+		// If every entry is a trusted proxy, this ends on the left-most one,
+		// which is where the request started.
+		client = entry
+		if !isTrustedProxy(entry, trustedProxies) {
+			break
 		}
 	}
+	if client != "" {
+		return client
+	}
 
-	return host
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		return realIP
+	}
+	return peer
+}
+
+// hostOnly strips the port from an address that has one.
+func hostOnly(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
+func isTrustedProxy(addr string, trustedProxies []*net.IPNet) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range trustedProxies {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // authLimiter returns a rate limiter for the given IP, creating one if needed.

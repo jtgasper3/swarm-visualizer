@@ -80,9 +80,11 @@ The login flow protects against CSRF with a `state` parameter and against token 
 Other Environment Variables:
 
 - `DOCKER_API_VERSION`: adjust the Docker api version if the server needs it. (default: `(negotiated)`)
-- `TRUSTED_PROXIES`: comma-separated list of trusted reverse-proxy IP addresses or CIDR ranges. When set, the `X-Real-IP` and `X-Forwarded-For` headers are trusted for rate limiting purposes when the direct connection originates from a listed address. Plain IPs are accepted alongside CIDR notation (e.g. `10.0.0.0/8,192.168.1.5`). **Only set this if the application port is not directly reachable by untrusted clients**, otherwise clients can spoof their IP to bypass rate limits.
+- `TRUSTED_PROXIES`: comma-separated list of trusted reverse-proxy IP addresses or CIDR ranges. When set, the `X-Forwarded-For` and `X-Real-IP` headers are trusted for rate limiting purposes when the direct connection originates from a listed address. `X-Forwarded-For` is read from the right, skipping listed proxies, so an entry the client supplied itself is not believed; `X-Real-IP` is used only when there is no `X-Forwarded-For`. Plain IPs are accepted alongside CIDR notation (e.g. `10.0.0.0/8,192.168.1.5`). **Only set this if the application port is not directly reachable by untrusted clients**, otherwise clients can spoof their IP to bypass rate limits.
 
 ### Reverse Proxy Considerations
+
+The login and callback endpoints are limited to five requests a minute per client address. The app can only tell clients apart if it sees their addresses: a port published through the Swarm routing mesh (the default, as in the Usage examples) presents every client as the same ingress-network address, so all users share that one allowance. A reverse proxy that passes the client address, or publishing the port in `host` mode, avoids this.
 
 When running behind a reverse proxy (such as Traefik or nginx), set `TRUSTED_PROXIES` to the proxy's IP or subnet and `CONTEXT_ROOT` to the path prefix if the app is not served from `/`. For example:
 

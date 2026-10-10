@@ -50,19 +50,65 @@ func TestClientIP(t *testing.T) {
 			want:           "203.0.113.10",
 		},
 		{
-			name:           "trusted proxy with X-Forwarded-For multiple entries returns first",
+			name:           "trusted hops on the right of X-Forwarded-For are skipped",
 			remoteAddr:     "10.1.2.3:5678",
-			xForwardedFor:  "203.0.113.10, 10.5.6.7",
+			xForwardedFor:  "203.0.113.10, 10.5.6.7, 10.5.6.8",
 			trustedProxies: []*net.IPNet{trustedProxy},
 			want:           "203.0.113.10",
 		},
 		{
-			name:           "X-Real-IP preferred over X-Forwarded-For",
+			// The client sent "X-Forwarded-For: 1.2.3.4"; the proxy appended
+			// the address the request really came from.
+			name:           "entries the client supplied are not believed",
 			remoteAddr:     "10.1.2.3:5678",
-			xRealIP:        "203.0.113.5",
+			xForwardedFor:  "1.2.3.4, 203.0.113.9",
+			trustedProxies: []*net.IPNet{trustedProxy},
+			want:           "203.0.113.9",
+		},
+		{
+			name:           "a forged trusted address on the left changes nothing",
+			remoteAddr:     "10.1.2.3:5678",
+			xForwardedFor:  "10.9.9.9, 203.0.113.9, 10.5.6.7",
+			trustedProxies: []*net.IPNet{trustedProxy},
+			want:           "203.0.113.9",
+		},
+		{
+			name:           "all entries trusted returns where the request started",
+			remoteAddr:     "10.1.2.3:5678",
+			xForwardedFor:  "10.7.7.7, 10.5.6.7",
+			trustedProxies: []*net.IPNet{trustedProxy},
+			want:           "10.7.7.7",
+		},
+		{
+			name:           "an entry with a port is keyed by its address",
+			remoteAddr:     "10.1.2.3:5678",
+			xForwardedFor:  "203.0.113.9:41000",
+			trustedProxies: []*net.IPNet{trustedProxy},
+			want:           "203.0.113.9",
+		},
+		{
+			name:           "IPv6 entries",
+			remoteAddr:     "10.1.2.3:5678",
+			xForwardedFor:  "2001:db8::1, 10.5.6.7",
+			trustedProxies: []*net.IPNet{trustedProxy},
+			want:           "2001:db8::1",
+		},
+		{
+			name:           "empty entries are ignored",
+			remoteAddr:     "10.1.2.3:5678",
+			xForwardedFor:  "203.0.113.9, , ",
+			trustedProxies: []*net.IPNet{trustedProxy},
+			want:           "203.0.113.9",
+		},
+		{
+			// A proxy that appends to X-Forwarded-For may pass X-Real-IP
+			// through untouched, so the client could have written it.
+			name:           "X-Forwarded-For is preferred over X-Real-IP",
+			remoteAddr:     "10.1.2.3:5678",
+			xRealIP:        "1.2.3.4",
 			xForwardedFor:  "203.0.113.10",
 			trustedProxies: []*net.IPNet{trustedProxy},
-			want:           "203.0.113.5",
+			want:           "203.0.113.10",
 		},
 		{
 			name:           "untrusted remote ignores headers",
@@ -108,6 +154,19 @@ func TestClientIP(t *testing.T) {
 				t.Errorf("clientIP() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// A request can carry X-Forwarded-For on more than one line; a proxy that adds
+// its own line rather than appending to the client's must not be fooled either.
+func TestClientIP_MultipleForwardedLines(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:5678"
+	req.Header.Add("X-Forwarded-For", "1.2.3.4")
+	req.Header.Add("X-Forwarded-For", "203.0.113.9")
+
+	if got := clientIP(req, []*net.IPNet{mustParseCIDR("10.0.0.0/8")}); got != "203.0.113.9" {
+		t.Errorf("clientIP() = %q, want %q", got, "203.0.113.9")
 	}
 }
 
