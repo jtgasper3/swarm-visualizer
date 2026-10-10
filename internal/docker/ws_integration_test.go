@@ -104,3 +104,41 @@ func TestWS_FailedUpgradeWritesOneResponse(t *testing.T) {
 		t.Errorf("body = %q, want only the upgrader's message", body)
 	}
 }
+
+// TestWS_OversizedMessageIsRefused verifies that the server does not buffer
+// whatever a client chooses to send: a message over the limit ends the
+// connection, and the client's slot is freed.
+func TestWS_OversizedMessageIsRefused(t *testing.T) {
+	h := newHub(&config.Config{ContextRoot: "/"}, nil)
+	_, wsURL := wsServer(t, h)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	if !waitFor(t, func() bool { return clientCount(h) == 1 }, 2*time.Second) {
+		t.Fatal("client was not registered")
+	}
+
+	// A small message is read and discarded.
+	if err := conn.WriteMessage(websocket.TextMessage, []byte("hello")); err != nil {
+		t.Fatalf("write small message: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if c := clientCount(h); c != 1 {
+		t.Fatalf("a small message must not end the connection, count=%d", c)
+	}
+
+	// The server hangs up as soon as it has read the frame's length, which can
+	// be before this write has finished, so the write itself may fail.
+	_ = conn.WriteMessage(websocket.BinaryMessage, make([]byte, 64*1024))
+	if !waitFor(t, func() bool { return clientCount(h) == 0 }, 2*time.Second) {
+		t.Fatal("expected the client to be dropped after an oversized message")
+	}
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Error("expected the connection to be closed after an oversized message")
+	}
+}
