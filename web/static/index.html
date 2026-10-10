@@ -152,13 +152,26 @@
     }
   </style>
   
+  <!-- The local modules are mapped to "?r=2" addresses for one reason. Releases
+       from before the server sent Cache-Control left copies of these files in
+       browser caches, which reuse them without asking the server; a reload
+       would then run this page against those old copies and fail. A mapping
+       here applies to every import of the file, including the modules'
+       imports of each other, so they all load from an address no old copy is
+       stored under. Files added since then need no entry. -->
   <script type="importmap">
     {
       "imports": {
         "vue": "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.js",
         "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.esm.js",
         "@vueuse/shared": "https://cdn.jsdelivr.net/npm/@vueuse/shared@12/index.min.mjs",
-        "@vueuse/core": "https://cdn.jsdelivr.net/npm/@vueuse/core@12/index.min.mjs"
+        "@vueuse/core": "https://cdn.jsdelivr.net/npm/@vueuse/core@12/index.min.mjs",
+        "./details.js": "./details.js?r=2",
+        "./filters.js": "./filters.js?r=2",
+        "./node.js": "./node.js?r=2",
+        "./task.js": "./task.js?r=2",
+        "./utils.js": "./utils.js?r=2",
+        "./websocket.js": "./websocket.js?r=2"
       }
     }
   </script>
