@@ -146,6 +146,58 @@ func TestInspector_OldTasksStayRedactedAfterTheLabelIsRemoved(t *testing.T) {
 	}
 }
 
+// Adding a variable to hide-envs creates no task, so nothing prompts a task
+// poll. The tasks already cached were sanitized before the label said so.
+func TestInspector_HideEnvsAddedToARunningService(t *testing.T) {
+	for _, tasksFailing := range []bool{false, true} {
+		name := "task polls working"
+		if tasksFailing {
+			name = "task polls failing"
+		}
+		t.Run(name, func(t *testing.T) {
+			src := &fakeSource{
+				services: []swarm.Service{testService("s1", "", "TOKEN=hunter2")},
+				tasks:    []swarm.Task{testTask("t1", "s1", "TOKEN=hunter2")},
+			}
+			in, hub := newTestInspector(src)
+			ctx := context.Background()
+			in.load(ctx)
+			if frame := publishedFrame(t, hub); !strings.Contains(frame, "hunter2") {
+				t.Fatalf("the variable is not hidden yet and should be in the first frame: %s", frame)
+			}
+
+			// The operator labels the service. Its tasks are untouched.
+			labelled := testService("s1", "TOKEN", "TOKEN=hunter2")
+			labelled.Version.Index = 2
+			src.services = []swarm.Service{labelled}
+			if tasksFailing {
+				src.tasksErr = errors.New("task list unavailable")
+			}
+
+			// Only the structural tick fires.
+			if !in.refreshStructural(ctx) {
+				t.Fatal("expected the structural refresh to succeed")
+			}
+			in.publish()
+			if frame := publishedFrame(t, hub); strings.Contains(frame, "hunter2") {
+				t.Errorf("hidden variable published after the label was added: %s", frame)
+			}
+
+			// Later ticks must not bring it back either.
+			in.refreshTasks(ctx)
+			in.refreshStructural(ctx)
+			in.publish()
+			select {
+			case frame := <-hub.broadcast:
+				if strings.Contains(string(frame), "hunter2") {
+					t.Errorf("hidden variable published on a later tick: %s", frame)
+				}
+			default:
+			}
+		})
+	}
+}
+
 func TestInspector_WithholdsNewTaskUntilServicesCanBeRead(t *testing.T) {
 	src := &fakeSource{
 		services: []swarm.Service{testService("s1", "", "A=1")},

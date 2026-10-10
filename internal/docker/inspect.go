@@ -160,6 +160,16 @@ func (in *inspector) refreshStructural(ctx context.Context) bool {
 		return false
 	}
 	in.nodes, in.services, in.networks = n, s, nw
+	if !reflect.DeepEqual(hidden, in.hiddenEnvs) {
+		// The cached tasks were sanitized under the previous lists, and a label
+		// change creates no task to prompt a task poll. Apply the new lists
+		// here, or a variable just added to hide-envs would stay in every
+		// snapshot until a task poll next succeeds. The tasks share their
+		// storage with the last snapshot, which therefore cannot show that
+		// they changed, so forget it and let the next publish go out.
+		in.tasks = sanitizeTasks(in.tasks, in.cfg, hidden)
+		in.lastPublished = nil
+	}
 	in.hiddenEnvs = hidden
 	in.haveStructural = true
 	return true

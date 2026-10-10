@@ -48,14 +48,9 @@ const (
 func LoadConfig() *Config {
 	authEnabled := getEnvBool("ENABLE_AUTHN")
 
-	// ServeMux reads a pattern with no leading slash as a host name, which
-	// would leave every route unreachable, so normalize both ends.
-	contextRoot := getEnv("CONTEXT_ROOT", defaultContextRoot)
-	if !strings.HasPrefix(contextRoot, "/") {
-		contextRoot = "/" + contextRoot
-	}
-	if !strings.HasSuffix(contextRoot, "/") {
-		contextRoot += "/"
+	contextRoot, err := normalizeContextRoot(getEnv("CONTEXT_ROOT", defaultContextRoot))
+	if err != nil {
+		log.Fatalf("Invalid CONTEXT_ROOT: %v", err)
 	}
 
 	clientSecret := ""
@@ -155,6 +150,26 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// normalizeContextRoot returns root as a path that starts and ends with a
+// slash.
+//
+// ServeMux reads a pattern with no leading slash as a host name, which would
+// leave every route unreachable, so one is added. A second slash or a backslash
+// straight after it is refused: browsers read "//host/" and "/\host/" as
+// another site, and the root is where login and logout redirect to.
+func normalizeContextRoot(root string) (string, error) {
+	if !strings.HasPrefix(root, "/") {
+		root = "/" + root
+	}
+	if !strings.HasSuffix(root, "/") {
+		root += "/"
+	}
+	if len(root) > 1 && (root[1] == '/' || root[1] == '\\') {
+		return "", fmt.Errorf("%q is not a path; use something like /visualizer/", root)
+	}
+	return root, nil
 }
 
 // getEnvBool reads a boolean setting; unset or empty means false. A value that

@@ -21,13 +21,17 @@ type fakeSource struct {
 	err      error
 	// servicesErr fails the service list alone.
 	servicesErr error
+	// tasksErr fails the task list alone.
+	tasksErr error
 }
 
 func (f fakeSource) Nodes(context.Context) ([]swarm.Node, error) { return f.nodes, f.err }
 func (f fakeSource) Services(context.Context) ([]swarm.Service, error) {
 	return f.services, errors.Join(f.err, f.servicesErr)
 }
-func (f fakeSource) Tasks(context.Context) ([]swarm.Task, error)         { return f.tasks, f.err }
+func (f fakeSource) Tasks(context.Context) ([]swarm.Task, error) {
+	return f.tasks, errors.Join(f.err, f.tasksErr)
+}
 func (f fakeSource) Networks(context.Context) ([]network.Summary, error) { return f.networks, f.err }
 
 func taskIDs(tasks []swarm.Task) map[string]bool {

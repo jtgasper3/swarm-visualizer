@@ -293,3 +293,19 @@ func TestLoadConfig_ContextRoot(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeContextRoot verifies that a root which a browser would read as
+// another host is refused: it is used as a redirect target after login.
+func TestNormalizeContextRoot(t *testing.T) {
+	for _, root := range []string{"", "/", "visualizer", "/visualizer", "/a/b/"} {
+		if _, err := normalizeContextRoot(root); err != nil {
+			t.Errorf("normalizeContextRoot(%q): unexpected error: %v", root, err)
+		}
+	}
+
+	for _, root := range []string{"//", "//example.com", "//example.com/", `/\example.com`, `\example.com`, `/\`} {
+		if got, err := normalizeContextRoot(root); err == nil {
+			t.Errorf("normalizeContextRoot(%q) = %q, want an error", root, got)
+		}
+	}
+}
