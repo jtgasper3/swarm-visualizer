@@ -8,27 +8,23 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// ValidateToken extracts the ID token from the request (cookie or bearer
-// header) and verifies it.
+// ValidateToken authenticates a request and returns its claims. A browser
+// presents the session cookie issued at login; any other client can present an
+// ID token as a bearer token.
 func (a *Authenticator) ValidateToken(r *http.Request) (jwt.MapClaims, error) {
-	var rawIDToken string
-	cookie, err := r.Cookie("id_token")
-	if err != nil {
-		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			rawIDToken = strings.TrimPrefix(authHeader, "Bearer ")
-		} else {
-			return nil, fmt.Errorf("Unauthorized: No valid ID token")
-		}
-	} else {
-		rawIDToken = cookie.Value
+	if cookie, err := r.Cookie(sessionCookie); err == nil {
+		return a.validateSession(cookie.Value)
 	}
 
-	return a.validateRawToken(rawIDToken)
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		return a.validateRawToken(strings.TrimPrefix(authHeader, "Bearer "))
+	}
+	return nil, fmt.Errorf("Unauthorized: no session cookie or bearer token")
 }
 
 // validateRawToken verifies an ID token's signature, issuer, and audience and
-// returns its claims. It is shared by the WebSocket request path and the OAuth
+// returns its claims. It is shared by bearer-token requests and the OAuth
 // callback (which additionally checks the nonce).
 func (a *Authenticator) validateRawToken(rawIDToken string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(rawIDToken, func(token *jwt.Token) (interface{}, error) {
@@ -60,14 +56,12 @@ func (a *Authenticator) validateRawToken(rawIDToken string) (jwt.MapClaims, erro
 		return nil, fmt.Errorf("unauthorized")
 	}
 
-	if a.cfg.OAuthConfig.Issuer != "" {
-		issuer, err := claims.GetIssuer()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read issuer claim: %v", err)
-		}
-		if issuer != a.cfg.OAuthConfig.Issuer {
-			return nil, fmt.Errorf("ID token from unexpected issuer: %s", issuer)
-		}
+	issuer, err := claims.GetIssuer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read issuer claim: %v", err)
+	}
+	if issuer == "" || issuer != a.cfg.OAuthConfig.Issuer {
+		return nil, fmt.Errorf("ID token from unexpected issuer: %s", issuer)
 	}
 
 	audiences, err := claims.GetAudience()

@@ -54,12 +54,12 @@ func TestOAuthRoutes_ThroughMux(t *testing.T) {
 	}
 	cleared := false
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "id_token" && c.MaxAge < 0 {
+		if c.Name == sessionCookie && c.MaxAge < 0 {
 			cleared = true
 		}
 	}
 	if !cleared {
-		t.Fatal("logout did not clear the id_token cookie")
+		t.Fatal("logout did not clear the session cookie")
 	}
 }
 

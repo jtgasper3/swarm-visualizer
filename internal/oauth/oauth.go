@@ -6,10 +6,14 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +30,8 @@ type Authenticator struct {
 	cfg         *config.Config
 	oauthConfig *oauth2.Config
 	keys        *keyStore
+	// sessionKey signs the session cookies issued after login.
+	sessionKey []byte
 
 	limitersMu sync.Mutex
 	limiters   map[string]*ipLimiter
@@ -39,12 +45,57 @@ type ipLimiter struct {
 // NewAuthenticator discovers the OIDC endpoints and JWKS, then builds the
 // oauth2 config. It performs network I/O.
 func NewAuthenticator(cfg *config.Config) (*Authenticator, error) {
+	if err := checkConfig(&cfg.OAuthConfig); err != nil {
+		return nil, err
+	}
+	cfg.OAuthConfig.Scopes = withOpenID(cfg.OAuthConfig.Scopes)
+
 	a := &Authenticator{cfg: cfg, limiters: make(map[string]*ipLimiter)}
 	if err := a.fetchWellKnownOIDCConfig(); err != nil {
 		return nil, err
 	}
 	a.oauthConfig = setupOAuthConfig(&cfg.OAuthConfig)
+
+	sessionKey, err := newSessionKey(&cfg.OAuthConfig)
+	if err != nil {
+		return nil, err
+	}
+	a.sessionKey = sessionKey
 	return a, nil
+}
+
+// checkConfig reports every OIDC setting that is missing or unusable, so that
+// a misconfiguration stops the server with one message that names them all
+// instead of surfacing later as a login that cannot complete.
+func checkConfig(cfg *config.OAuthConfig) error {
+	var problems []string
+	if cfg.ClientID == "" {
+		problems = append(problems, "OIDC_CLIENT_ID is not set")
+	}
+	if cfg.OIDCWellKnownURL == "" {
+		problems = append(problems, "OIDC_WELL_KNOWN_URL is not set")
+	}
+	if cfg.RedirectURL == "" {
+		problems = append(problems, "OIDC_REDIRECT_URL is not set")
+	} else if u, err := url.Parse(cfg.RedirectURL); err != nil || !u.IsAbs() || u.Host == "" {
+		problems = append(problems, fmt.Sprintf("OIDC_REDIRECT_URL %q is not an absolute URL", cfg.RedirectURL))
+	}
+
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// withOpenID makes sure the openid scope is requested. Without it the identity
+// provider treats the login as plain OAuth and returns no ID token, which
+// leaves the callback with nothing to establish a session from.
+func withOpenID(scopes []string) []string {
+	if slices.Contains(scopes, "openid") {
+		return scopes
+	}
+	log.Printf("OIDC_SCOPES does not include openid; adding it")
+	return append([]string{"openid"}, scopes...)
 }
 
 // clientIP returns the address a request is rate-limited by. The forwarding
@@ -202,10 +253,15 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	// state binds the callback to this browser (CSRF); nonce binds the issued
 	// ID token to this login flow (replay protection) and is validated against
-	// the token's nonce claim in the callback.
-	url := a.oauthConfig.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce))
+	// the token's nonce claim in the callback. The PKCE verifier binds the
+	// authorization code to this browser as well: the identity provider only
+	// redeems the code for whoever presents the verifier, so a code read off
+	// the redirect is of no use without this cookie.
+	verifier := oauth2.GenerateVerifier()
+	url := a.oauthConfig.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce), oauth2.S256ChallengeOption(verifier))
 	setFlowCookie(a.cfg, w, "state", state)
 	setFlowCookie(a.cfg, w, "nonce", nonce)
+	setFlowCookie(a.cfg, w, verifierCookie, verifier)
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
@@ -222,11 +278,21 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	code := r.URL.Query().Get("code")
-	token, err := a.oauthConfig.Exchange(ctx, code)
+	verifier, err := r.Cookie(verifierCookie)
 	if err != nil {
 		clearFlowCookies(a.cfg, w)
-		http.Error(w, fmt.Sprintf("Failed to exchange token: %v", err), http.StatusInternalServerError)
+		http.Error(w, "Missing PKCE verifier", http.StatusBadRequest)
+		return
+	}
+
+	code := r.URL.Query().Get("code")
+	token, err := a.oauthConfig.Exchange(ctx, code, oauth2.VerifierOption(verifier.Value))
+	if err != nil {
+		clearFlowCookies(a.cfg, w)
+		// The error can quote the identity provider's response, so it goes to
+		// the log and not to the browser.
+		log.Printf("Callback token exchange failed: %s %v", r.RemoteAddr, err)
+		http.Error(w, "Sign-in failed: the identity provider did not issue a token", http.StatusBadGateway)
 		return
 	}
 
@@ -262,10 +328,17 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	clearFlowCookies(a.cfg, w)
 
+	now := time.Now()
+	session, expires, err := a.newSession(claims, now)
+	if err != nil {
+		log.Printf("Callback could not issue a session: %s %v", r.RemoteAddr, err)
+		http.Error(w, "Sign-in failed", http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     "id_token",
-		Value:    rawIDToken,
-		MaxAge:   a.cfg.OAuthConfig.SessionMaxAge,
+		Name:     sessionCookie,
+		Value:    session,
+		MaxAge:   int(expires.Sub(now).Seconds()),
 		Path:     a.cfg.ContextRoot,
 		HttpOnly: true,
 		Secure:   true,
@@ -285,21 +358,25 @@ func (a *Authenticator) fetchWellKnownOIDCConfig() error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to fetch well-known configuration: %s returned %s", wellKnownURL, resp.Status)
+	}
+
 	var discovery struct {
 		Issuer   string `json:"issuer"`
 		TokenUrl string `json:"token_endpoint"`
 		AuthUrl  string `json:"authorization_endpoint"`
 		JWKSURI  string `json:"jwks_uri"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxMetadataBytes)).Decode(&discovery); err != nil {
 		return fmt.Errorf("failed to decode well-known configuration: %v", err)
 	}
 
-	if discovery.Issuer != "" {
-		cfg.OAuthConfig.Issuer = discovery.Issuer
-	} else {
-		log.Printf("Warning: well-known configuration provided no issuer; ID token issuer validation is disabled")
+	// Every ID token is checked against the issuer, so there has to be one.
+	if discovery.Issuer == "" {
+		return fmt.Errorf("well-known configuration provided no issuer")
 	}
+	cfg.OAuthConfig.Issuer = discovery.Issuer
 
 	if cfg.OAuthConfig.AuthURL == "" {
 		log.Printf("Using Authorization Endpoint from well-known config %s", discovery.AuthUrl)
@@ -308,6 +385,13 @@ func (a *Authenticator) fetchWellKnownOIDCConfig() error {
 	if cfg.OAuthConfig.TokenURL == "" {
 		log.Printf("Using Token Endpoint from well-known config %s", discovery.TokenUrl)
 		cfg.OAuthConfig.TokenURL = discovery.TokenUrl
+	}
+
+	if cfg.OAuthConfig.AuthURL == "" {
+		return fmt.Errorf("well-known configuration provided no authorization_endpoint and OIDC_AUTH_URL is not set")
+	}
+	if cfg.OAuthConfig.TokenURL == "" {
+		return fmt.Errorf("well-known configuration provided no token_endpoint and OIDC_TOKEN_URL is not set")
 	}
 
 	if discovery.JWKSURI == "" {
@@ -328,7 +412,7 @@ func (a *Authenticator) fetchWellKnownOIDCConfig() error {
 // terminate the session at the identity provider.
 func (a *Authenticator) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "id_token",
+		Name:     sessionCookie,
 		Value:    "",
 		Path:     a.cfg.ContextRoot,
 		HttpOnly: true,
@@ -354,9 +438,12 @@ func setFlowCookie(cfg *config.Config, w http.ResponseWriter, name, value string
 	})
 }
 
-// clearFlowCookies expires the state and nonce cookies set during login.
+// verifierCookie holds the PKCE code verifier between login and callback.
+const verifierCookie = "pkce_verifier"
+
+// clearFlowCookies expires the cookies set during login.
 func clearFlowCookies(cfg *config.Config, w http.ResponseWriter) {
-	for _, name := range []string{"state", "nonce"} {
+	for _, name := range []string{"state", "nonce", verifierCookie} {
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
 			Value:    "",

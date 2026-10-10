@@ -68,14 +68,18 @@ OIDC Environment Variables:
 - `OIDC_CLIENT_ID`: standard OAuth client id
 - `OIDC_CLIENT_SECRET_FILE`: path to file containing a standard OAuth client secret
 - `OIDC_REDIRECT_URL`: this app's callback url; should end in `/callback` and will be registered in the identity provider. For example, `https://myswarm.example.internal/visualizer/callback`
-- `OIDC_SCOPES`: comma separated list of scopes. For example, `openid,profile,email`
+- `OIDC_SCOPES`: comma separated list of scopes. For example, `openid,profile,email`. `openid` is added if it is not listed, since without it no ID token is issued
 - `OIDC_WELL_KNOWN_URL`: location to look up the identity provider's public signing key, token and authorization endpoints. For example, `https://auth.example.com/.well-known/openid-configuration`
 - `OIDC_AUTH_URL`: authorization endpoint URL; overrides the value from `OIDC_WELL_KNOWN_URL` if set
 - `OIDC_TOKEN_URL`: token endpoint URL; overrides the value from `OIDC_WELL_KNOWN_URL` if set
 - `OIDC_USERNAME_CLAIM`: JWT claim to use as the display username (default: `preferred_username`)
-- `OIDC_SESSION_MAX_AGE`: lifetime of the session cookie in seconds (default: `3600`)
+- `OIDC_SESSION_MAX_AGE`: lifetime of the session cookie in seconds (default: `3600`). A session ends sooner if the ID token it came from expires first
 
-The login flow protects against CSRF with a `state` parameter and against token replay with a `nonce` (validated against the ID token's `nonce` claim in the callback). When authentication is enabled the app exposes a `<CONTEXT_ROOT>logout` endpoint (and a logout button in the UI) that clears the local session cookie. This is a *local* logout only — it does not call the identity provider's end-session endpoint, so an existing IdP session may sign the user straight back in.
+With `ENABLE_AUTHN=true` the app will not start unless `OIDC_CLIENT_ID`, `OIDC_REDIRECT_URL` and `OIDC_WELL_KNOWN_URL` are set and the well-known document can be fetched and names an issuer.
+
+The login flow protects against CSRF with a `state` parameter, against token replay with a `nonce` (validated against the ID token's `nonce` claim in the callback), and against a stolen authorization code with PKCE.
+
+After login the browser holds a small signed session cookie rather than the ID token itself, which can be too large for a cookie when it carries many group claims. The cookie is signed with a key derived from the client secret together with the issuer, client ID and redirect URL, so sessions survive a restart and are accepted by every replica of this deployment but by no other; changing any of those signs everyone out. Without a client secret a random key is used instead: sessions last only until the process restarts, and replicas do not accept each other's, so run a single replica in that case. Clients other than a browser can still present an ID token as a bearer token. When authentication is enabled the app exposes a `<CONTEXT_ROOT>logout` endpoint (and a logout button in the UI) that clears the local session cookie. This is a *local* logout only — it does not call the identity provider's end-session endpoint, so an existing IdP session may sign the user straight back in.
 
 Other Environment Variables:
 
@@ -185,7 +189,7 @@ viz:
 
 ### Authentication is not authorization
 
-Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies that a request carries a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
+Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies at login that the user holds a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
 
 To control *who* may access the app, restrict it at the boundaries:
 
