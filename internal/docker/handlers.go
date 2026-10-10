@@ -116,12 +116,16 @@ type wsClient struct {
 func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config, validate TokenValidator) *Hub {
 	hub := newHub(cfg, validate)
 
+	if err := validateSensitiveDataPaths(cfg.SensitiveDataPaths); err != nil {
+		log.Fatal(err)
+	}
+
 	src, err := newMobySource()
 	if err != nil {
 		log.Fatal("Docker client error:", err)
 	}
 
-	go inspectSwarmServices(cfg, src, hub)
+	go newInspector(cfg, src, hub).run()
 	go hub.runBroadcasts()
 
 	mux.HandleFunc(cfg.ContextRoot+"ws", hub.handleConnections)
@@ -142,8 +146,8 @@ func (h *Hub) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		// Upgrade has already written the error response.
 		log.Println("Upgrade error:", err)
-		http.Error(w, "Could not upgrade to WebSocket", http.StatusInternalServerError)
 		return
 	}
 

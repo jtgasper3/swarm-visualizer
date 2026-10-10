@@ -88,3 +88,19 @@ func TestWS_AuthAcceptsAndDelivers(t *testing.T) {
 		t.Fatalf("got %q, want %q", msg, frame)
 	}
 }
+
+// TestWS_FailedUpgradeWritesOneResponse verifies that a request which is not a
+// WebSocket handshake gets the upgrader's error response and nothing after it.
+func TestWS_FailedUpgradeWritesOneResponse(t *testing.T) {
+	h := newHub(&config.Config{ContextRoot: "/"}, nil)
+
+	rec := httptest.NewRecorder()
+	h.handleConnections(rec, httptest.NewRequest(http.MethodGet, "/ws", nil))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if body := rec.Body.String(); body != "Bad Request\n" {
+		t.Errorf("body = %q, want only the upgrader's message", body)
+	}
+}

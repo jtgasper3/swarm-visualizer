@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -45,9 +46,14 @@ const (
 )
 
 func LoadConfig() *Config {
-	authEnabled := os.Getenv("ENABLE_AUTHN") == "true"
+	authEnabled := getEnvBool("ENABLE_AUTHN")
 
+	// ServeMux reads a pattern with no leading slash as a host name, which
+	// would leave every route unreachable, so normalize both ends.
 	contextRoot := getEnv("CONTEXT_ROOT", defaultContextRoot)
+	if !strings.HasPrefix(contextRoot, "/") {
+		contextRoot = "/" + contextRoot
+	}
 	if !strings.HasSuffix(contextRoot, "/") {
 		contextRoot += "/"
 	}
@@ -133,10 +139,10 @@ func LoadConfig() *Config {
 			SessionMaxAge:    sessionMaxAge,
 		},
 		TrustedProxies:     trustedProxies,
-		HideAllConfigs:     os.Getenv("HIDE_ALL_CONFIGS") == "true",
-		HideAllEnvs:        os.Getenv("HIDE_ALL_ENVS") == "true",
-		HideAllMounts:      os.Getenv("HIDE_ALL_MOUNTS") == "true",
-		HideAllSecrets:     os.Getenv("HIDE_ALL_SECRETS") == "true",
+		HideAllConfigs:     getEnvBool("HIDE_ALL_CONFIGS"),
+		HideAllEnvs:        getEnvBool("HIDE_ALL_ENVS"),
+		HideAllMounts:      getEnvBool("HIDE_ALL_MOUNTS"),
+		HideAllSecrets:     getEnvBool("HIDE_ALL_SECRETS"),
 		HideLabels:         splitList(os.Getenv("HIDE_LABELS")),
 		SensitiveDataPaths: sensitiveDataPaths,
 		MaxWSConnections:   maxWSConnections,
@@ -149,6 +155,30 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// getEnvBool reads a boolean setting; unset or empty means false. A value that
+// is not a recognizable boolean stops the server instead of counting as false:
+// these settings turn on authentication and redaction, and a slip such as
+// ENABLE_AUTHN=yes must not quietly leave them off.
+func getEnvBool(key string) bool {
+	value, err := parseBool(os.Getenv(key))
+	if err != nil {
+		log.Fatalf("Invalid %s: %v", key, err)
+	}
+	return value
+}
+
+func parseBool(value string) (bool, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false, nil
+	}
+	parsed, err := strconv.ParseBool(strings.ToLower(value))
+	if err != nil {
+		return false, fmt.Errorf("%q is not a boolean; use true or false", value)
+	}
+	return parsed, nil
 }
 
 // splitList parses a comma-separated value into a slice, trimming whitespace
