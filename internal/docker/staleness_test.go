@@ -299,6 +299,47 @@ func TestInspector_PollsSlowlyWhileNobodyIsConnected(t *testing.T) {
 	}
 }
 
+// The fan-out used to run for as long as the process did, and publishing to a
+// hub that nothing was reading from waited as long.
+func TestHub_CloseStopsTheFanOut(t *testing.T) {
+	h := newHub(&config.Config{}, nil)
+	stopped := make(chan struct{})
+	go func() {
+		h.runBroadcasts()
+		close(stopped)
+	}()
+
+	h.Publish([]byte(`{"n":1}`))
+	if !waitFor(t, h.Ready, 2*time.Second) {
+		t.Fatal("the frame was not fanned out")
+	}
+
+	h.Close(context.Background())
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the fan-out is still running after Close")
+	}
+
+	// With nothing reading, the channel holds one frame. Publishing more must
+	// not wait for a reader that is never coming.
+	published := make(chan struct{})
+	go func() {
+		for range 3 {
+			h.Publish([]byte(`{"n":2}`))
+		}
+		close(published)
+	}()
+	select {
+	case <-published:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Publish waited on a closed hub")
+	}
+
+	// A second Close must not fail on what the first already did.
+	h.Close(context.Background())
+}
+
 // Close has to wait for the closing frames to be written, or a shutdown that
 // follows straight on would drop them with the connections.
 func TestHub_CloseWaitsForWriters(t *testing.T) {
@@ -466,6 +507,7 @@ func TestInspector_RunStopsWhenTheContextEnds(t *testing.T) {
 	f := newStaleFixture()
 	f.in.now = time.Now
 	go f.hub.runBroadcasts()
+	t.Cleanup(func() { f.hub.Close(context.Background()) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
