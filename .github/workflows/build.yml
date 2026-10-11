@@ -5,10 +5,9 @@ on:
     paths-ignore:
       - README.md
       - LICENSE
-  # Tests what merging would produce, and is the only run a pull request from
-  # a fork gets. The image is built but not published: a fork has no secrets.
-  # A branch of this repository is also run by its push, above, which is what
-  # publishes its image.
+  # For pull requests from forks, whose pushes never run here. They get no
+  # secrets, so the image is built but not published. See the test job for
+  # what happens to a pull request from a branch of this repository.
   pull_request:
     paths-ignore:
       - README.md
@@ -26,6 +25,14 @@ env:
 
 jobs:
   test:
+    # A branch of this repository was run when it was pushed, and running it
+    # again for its pull request would spend the same minutes twice. So for
+    # those pull requests this job is skipped, and build with it.
+    #
+    # The price: a skipped job counts as passing. If these checks are ever
+    # made required, the skipped one can stand in for a failing one from the
+    # push. Run both, or limit push to main and tags, before requiring them.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
 
     steps:
