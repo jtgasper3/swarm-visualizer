@@ -463,9 +463,6 @@ func TestInspector_ClearsWholeGroups(t *testing.T) {
 }
 
 func TestInspector_RunStopsWhenTheContextEnds(t *testing.T) {
-	stoppedTaskCache = make(map[string]cachedTask)
-	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
-
 	f := newStaleFixture()
 	f.in.now = time.Now
 	go f.hub.runBroadcasts()

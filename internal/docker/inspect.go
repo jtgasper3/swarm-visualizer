@@ -49,13 +49,11 @@ func validateSensitiveDataPaths(paths []string) error {
 	return errors.Join(errs...)
 }
 
+// cachedTask is a stopped task and when the inspector first saw it stopped.
 type cachedTask struct {
 	task      swarm.Task
 	firstSeen time.Time
 }
-
-// stoppedTaskCache is only accessed from the inspector's single goroutine.
-var stoppedTaskCache = make(map[string]cachedTask)
 
 // swarmSource is the subset of the Docker API the inspector needs. It is an
 // interface so tests can substitute a fake daemon for the real client.
@@ -219,6 +217,10 @@ type inspector struct {
 	hiddenEnvs hiddenEnvs
 	// seenTasks holds the ID of every task the previous task poll returned.
 	seenTasks map[string]struct{}
+	// stoppedTasks holds the tasks seen to have failed or completed within
+	// the last failedTaskGracePeriod, by ID. The swarm goes on listing a
+	// stopped task for much longer than that, so what is shown is kept here.
+	stoppedTasks map[string]cachedTask
 
 	// The configured redaction paths, by the group they reach into, so that
 	// each is applied when its group is fetched and not on every publish.
@@ -238,6 +240,7 @@ func newInspector(cfg *config.Config, src swarmSource, hub *Hub) *inspector {
 		hub:              hub,
 		now:              time.Now,
 		callTimeout:      dockerCallTimeout,
+		stoppedTasks:     make(map[string]cachedTask),
 		structuralErrors: pollErrors{what: "nodes, services and networks", logf: log.Printf},
 		taskErrors:       pollErrors{what: "tasks", logf: log.Printf},
 	}
@@ -328,7 +331,7 @@ func (in *inspector) refreshTasks(ctx context.Context) bool {
 		in.seenTasks[t.ID] = struct{}{}
 	}
 
-	fetched := SwarmData{Tasks: sanitizeTasks(selectTasks(all), in.cfg, in.hiddenEnvs)}
+	fetched := SwarmData{Tasks: sanitizeTasks(in.selectTasks(all), in.cfg, in.hiddenEnvs)}
 	clearPaths(&fetched, in.taskPaths)
 	in.tasks = fetched.Tasks
 	in.haveTasks = true
@@ -518,19 +521,19 @@ const failedTaskGracePeriod = 30 * time.Second
 // selectTasks picks the tasks worth showing out of everything the swarm
 // reports: those meant to be running, plus the most recently stopped task per
 // slot for a short grace period.
-func selectTasks(tasks []swarm.Task) []swarm.Task {
-	now := time.Now()
+func (in *inspector) selectTasks(tasks []swarm.Task) []swarm.Task {
+	now := in.now()
 
 	// Single pass: update the stopped-task cache and collect running/accepted tasks.
 	var result []swarm.Task
 	resultIDs := make(map[string]struct{})
 	for _, t := range tasks {
 		if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateComplete {
-			if entry, exists := stoppedTaskCache[t.ID]; exists {
-				stoppedTaskCache[t.ID] = cachedTask{task: t, firstSeen: entry.firstSeen}
+			if entry, exists := in.stoppedTasks[t.ID]; exists {
+				in.stoppedTasks[t.ID] = cachedTask{task: t, firstSeen: entry.firstSeen}
 			} else if now.Sub(t.UpdatedAt) < failedTaskGracePeriod {
 				// Only cache tasks that stopped recently; skip historical tasks.
-				stoppedTaskCache[t.ID] = cachedTask{task: t, firstSeen: now}
+				in.stoppedTasks[t.ID] = cachedTask{task: t, firstSeen: now}
 			}
 		}
 		if t.DesiredState == swarm.TaskStateRunning || t.DesiredState == swarm.TaskStateAccepted {
@@ -540,9 +543,9 @@ func selectTasks(tasks []swarm.Task) []swarm.Task {
 	}
 
 	// Evict expired cache entries.
-	for id, entry := range stoppedTaskCache {
+	for id, entry := range in.stoppedTasks {
 		if now.Sub(entry.firstSeen) >= failedTaskGracePeriod {
-			delete(stoppedTaskCache, id)
+			delete(in.stoppedTasks, id)
 		}
 	}
 
@@ -551,7 +554,7 @@ func selectTasks(tasks []swarm.Task) []swarm.Task {
 	// services (slot == 0) it is "serviceID:nodeID". Only the newest entry
 	// per slot is kept so we don't flood the view with historical tasks.
 	newestStopped := make(map[string]swarm.Task)
-	for _, entry := range stoppedTaskCache {
+	for _, entry := range in.stoppedTasks {
 		t := entry.task
 		if _, inResult := resultIDs[t.ID]; inResult {
 			continue

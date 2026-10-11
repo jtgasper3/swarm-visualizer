@@ -21,7 +21,7 @@ ARG REVISION=unknown
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags="-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
-    -o swarm-monitor ./cmd/server
+    -o swarm-visualizer ./cmd/server
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" \
     -o healthcheck ./cmd/healthcheck
 
@@ -31,7 +31,7 @@ FROM scratch
 WORKDIR /
 
 # Copy the binaries from the build stage
-COPY --from=builder /app/swarm-monitor /swarm-monitor
+COPY --from=builder /app/swarm-visualizer /swarm-visualizer
 COPY --from=builder /app/healthcheck /healthcheck
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -42,4 +42,4 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["/healthcheck"]
 
-CMD ["/swarm-monitor"]
+CMD ["/swarm-visualizer"]

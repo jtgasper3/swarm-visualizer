@@ -15,9 +15,10 @@ import (
 	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
-// TokenValidator validates the ID token on an incoming request and returns its
-// claims. It decouples the WebSocket handler from the oauth package; the running
-// server wires in oauth.Authenticator.ValidateToken.
+// TokenValidator authenticates an incoming request, by its session cookie or a
+// bearer ID token, and returns the claims. It decouples the WebSocket handler
+// from the oauth package; the running server wires in
+// oauth.Authenticator.ValidateToken.
 type TokenValidator func(*http.Request) (jwt.MapClaims, error)
 
 var upgrader = websocket.Upgrader{

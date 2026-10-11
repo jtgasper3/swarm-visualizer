@@ -43,11 +43,9 @@ func taskIDs(tasks []swarm.Task) map[string]bool {
 }
 
 func TestSelectTasks_FiltersRunningAndRecentlyStopped(t *testing.T) {
-	stoppedTaskCache = make(map[string]cachedTask)
-	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
-
+	in := newInspector(&config.Config{}, nil, nil)
 	now := time.Now()
-	out := selectTasks([]swarm.Task{
+	out := in.selectTasks([]swarm.Task{
 		// Running task: always included.
 		{ID: "run1", ServiceID: "s1", Slot: 1, DesiredState: swarm.TaskStateRunning,
 			Status: swarm.TaskStatus{State: swarm.TaskStateRunning}},
@@ -71,11 +69,9 @@ func TestSelectTasks_FiltersRunningAndRecentlyStopped(t *testing.T) {
 }
 
 func TestSelectTasks_NewestStoppedPerSlotWins(t *testing.T) {
-	stoppedTaskCache = make(map[string]cachedTask)
-	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
-
+	in := newInspector(&config.Config{}, nil, nil)
 	now := time.Now()
-	out := selectTasks([]swarm.Task{
+	out := in.selectTasks([]swarm.Task{
 		// Two failed tasks for the same service+slot; only the newest should show.
 		{ID: "old", ServiceID: "s1", Slot: 1, DesiredState: swarm.TaskStateShutdown,
 			Status: swarm.TaskStatus{State: swarm.TaskStateFailed}, Meta: swarm.Meta{UpdatedAt: now, CreatedAt: now.Add(-2 * time.Minute)}},
@@ -93,9 +89,7 @@ func TestSelectTasks_NewestStoppedPerSlotWins(t *testing.T) {
 
 // The stopped tasks are gathered in a map, whose iteration order is random.
 func TestSelectTasks_OrderIsStable(t *testing.T) {
-	stoppedTaskCache = make(map[string]cachedTask)
-	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
-
+	in := newInspector(&config.Config{}, nil, nil)
 	now := time.Now()
 	var tasks []swarm.Task
 	for slot, id := range []string{"f", "b", "e", "a", "d", "c"} {
@@ -103,12 +97,12 @@ func TestSelectTasks_OrderIsStable(t *testing.T) {
 			Status: swarm.TaskStatus{State: swarm.TaskStateFailed}, Meta: swarm.Meta{UpdatedAt: now}})
 	}
 
-	first := selectTasks(tasks)
+	first := in.selectTasks(tasks)
 	if len(first) != len(tasks) {
 		t.Fatalf("expected all %d stopped tasks, got %d", len(tasks), len(first))
 	}
 	for i := 0; i < 50; i++ {
-		if again := selectTasks(tasks); !reflect.DeepEqual(first, again) {
+		if again := in.selectTasks(tasks); !reflect.DeepEqual(first, again) {
 			t.Fatalf("poll %d returned the same tasks in a different order", i)
 		}
 	}
