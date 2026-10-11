@@ -68,10 +68,13 @@ type cdpMessage struct {
 var devToolsAddress = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
 
 // startBrowser launches a headless browser with one blank tab. The test is
-// skipped when no browser is installed, except under CI, where that would let
-// the browser tests stop running without anyone noticing.
+// skipped with -short, and when no browser is installed, except under CI,
+// where that would let the browser tests stop running without anyone noticing.
 func startBrowser(t *testing.T) *page {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("needs a browser")
+	}
 
 	bin := findBrowser()
 	if bin == "" {
@@ -243,10 +246,17 @@ func problemIn(event cdpMessage) string {
 	return ""
 }
 
-// call sends one command and decodes its result into out, if given.
+// call sends one command and decodes its result into out, if given. A command
+// that fails ends the test.
 func (p *page) call(t *testing.T, method string, params, out any) {
 	t.Helper()
+	if err := p.send(method, params, out); err != nil {
+		t.Fatal(err)
+	}
+}
 
+// send is call for when a refusal is an answer and not a failure.
+func (p *page) send(method string, params, out any) error {
 	p.mu.Lock()
 	p.nextID++
 	id := p.nextID
@@ -262,21 +272,22 @@ func (p *page) call(t *testing.T, method string, params, out any) {
 	err := p.conn.WriteJSON(request)
 	p.mu.Unlock()
 	if err != nil {
-		t.Fatalf("%s: %v", method, err)
+		return fmt.Errorf("%s: %w", method, err)
 	}
 
 	select {
 	case message := <-reply:
 		if message.Error != nil {
-			t.Fatalf("%s: %s", method, message.Error.Message)
+			return fmt.Errorf("%s: %s", method, message.Error.Message)
 		}
 		if out != nil {
 			if err := json.Unmarshal(message.Result, out); err != nil {
-				t.Fatalf("%s: decode result: %v", method, err)
+				return fmt.Errorf("%s: decode result: %w", method, err)
 			}
 		}
+		return nil
 	case <-time.After(30 * time.Second):
-		t.Fatalf("%s: no reply from the browser", method)
+		return fmt.Errorf("%s: no reply from the browser", method)
 	}
 }
 
@@ -286,11 +297,24 @@ func (p *page) open(t *testing.T, url string) {
 	p.call(t, "Page.navigate", map[string]any{"url": url}, nil)
 }
 
+// beforeLoad has script run in every page this tab opens from now on, ahead of
+// the page's own scripts: a way to arrange what the page finds when it starts.
+func (p *page) beforeLoad(t *testing.T, script string) {
+	t.Helper()
+	p.call(t, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": script}, nil)
+}
+
 // eval runs a JavaScript expression in the page and decodes what it evaluates
-// to into out, if given. A promise is waited for.
+// to into out, if given. A promise is waited for. An expression that throws,
+// or that the browser refuses to run, ends the test.
 func (p *page) eval(t *testing.T, expression string, out any) {
 	t.Helper()
+	if err := p.evaluate(expression, out); err != nil {
+		t.Fatal(err)
+	}
+}
 
+func (p *page) evaluate(expression string, out any) error {
 	var result struct {
 		Result struct {
 			Value json.RawMessage `json:"value"`
@@ -302,36 +326,43 @@ func (p *page) eval(t *testing.T, expression string, out any) {
 			} `json:"exception"`
 		} `json:"exceptionDetails"`
 	}
-	p.call(t, "Runtime.evaluate", map[string]any{
+	err := p.send("Runtime.evaluate", map[string]any{
 		"expression":    expression,
 		"awaitPromise":  true,
 		"returnByValue": true,
 	}, &result)
+	if err != nil {
+		return fmt.Errorf("evaluating %s: %w", expression, err)
+	}
 	if result.ExceptionDetails != nil {
-		t.Fatalf("evaluating %s: %s %s", expression, result.ExceptionDetails.Text, result.ExceptionDetails.Exception.Description)
+		return fmt.Errorf("evaluating %s: %s %s", expression, result.ExceptionDetails.Text, result.ExceptionDetails.Exception.Description)
 	}
 	if out != nil && len(result.Result.Value) > 0 {
 		if err := json.Unmarshal(result.Result.Value, out); err != nil {
-			t.Fatalf("evaluating %s: decode %s: %v", expression, result.Result.Value, err)
+			return fmt.Errorf("evaluating %s: decode %s: %w", expression, result.Result.Value, err)
 		}
 	}
+	return nil
 }
 
-// waitFor polls until a JavaScript condition holds.
+// waitFor polls until a JavaScript condition holds. A poll that cannot be
+// evaluated counts as the condition not holding yet: the browser refuses a
+// script that arrives while the page is on its way somewhere else, as it is
+// between being sent to sign in and coming back.
 func (p *page) waitFor(t *testing.T, condition string) {
 	t.Helper()
 
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		var met bool
-		p.eval(t, "Boolean("+condition+")", &met)
-		if met {
+		err := p.evaluate("Boolean("+condition+")", &met)
+		if err == nil && met {
 			return
 		}
 		if time.Now().After(deadline) {
 			var body string
-			p.eval(t, "document.body ? document.body.innerText.slice(0, 2000) : ''", &body)
-			t.Fatalf("timed out waiting for %s\nthe page reads:\n%s\nproblems: %q", condition, body, p.reported())
+			_ = p.evaluate("document.body ? document.body.innerText.slice(0, 2000) : ''", &body)
+			t.Fatalf("timed out waiting for %s\nlast poll failed with: %v\nthe page reads:\n%s\nproblems: %q", condition, err, body, p.reported())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

@@ -43,9 +43,9 @@ func TestNewHandler_StopsWhatItStarted(t *testing.T) {
 		return done()
 	}
 
-	url, stop := startDashboard(t, filepath.Join("testdata", "empty"))
+	server := startDashboard(t, "empty")
 	ready := func() bool {
-		resp, err := http.Get(url + "/healthz")
+		resp, err := http.Get(server.URL + "/healthz")
 		if err != nil {
 			return false
 		}
@@ -59,7 +59,7 @@ func TestNewHandler_StopsWhatItStarted(t *testing.T) {
 		t.Fatalf("found %q running before the shutdown, want both; have they been renamed?", got)
 	}
 
-	stop()
+	server.Stop()
 	if !within(2*time.Second, func() bool { return len(running()) == 0 }) {
 		t.Errorf("still running after the shutdown: %q", running())
 	}

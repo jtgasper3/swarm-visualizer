@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,15 +33,20 @@ import (
 var apiVersionPrefix = regexp.MustCompile(`^/v[0-9.]+`)
 
 // fakeDocker answers the Docker API calls the server makes with the files in
-// dir: nodes.json, services.json, tasks.json and networks.json, each holding
-// what the daemon would send. "$NOW" in a file becomes the time the fake was
-// started, for what the server only shows while it is recent: a task that
-// failed stays on the dashboard for half a minute.
-func fakeDocker(t *testing.T, dir string) *httptest.Server {
+// testdata/<fixture>: nodes.json, services.json, tasks.json and networks.json,
+// each holding what the daemon would send. "$NOW" in a file becomes the time
+// the fake was started, for what the server only shows while it is recent: a
+// task that failed stays on the dashboard for half a minute. The function it
+// returns changes the fixture, as if the swarm had changed.
+func fakeDocker(t *testing.T, fixture string) (srv *httptest.Server, show func(fixture string)) {
 	t.Helper()
 
+	var dir atomic.Value
+	show = func(fixture string) { dir.Store(filepath.Join("testdata", fixture)) }
+	show(fixture)
+
 	now := []byte(time.Now().UTC().Format(time.RFC3339Nano))
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Api-Version", client.MaxAPIVersion)
 		w.Header().Set("Ostype", "linux")
 
@@ -48,7 +54,7 @@ func fakeDocker(t *testing.T, dir string) *httptest.Server {
 		case "/_ping":
 			_, _ = w.Write([]byte("OK"))
 		case "/nodes", "/services", "/tasks", "/networks":
-			body, err := os.ReadFile(filepath.Join(dir, name[1:]+".json"))
+			body, err := os.ReadFile(filepath.Join(dir.Load().(string), name[1:]+".json"))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -61,13 +67,28 @@ func fakeDocker(t *testing.T, dir string) *httptest.Server {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, show
 }
 
-// startDashboard runs the whole server against the swarm described in dir and
-// returns its address, and a function that shuts it down the way main does.
-// The server is shut down when the test ends in any case.
-func startDashboard(t *testing.T, dir string) (url string, stop func()) {
+// dashboard is a running server, with the stand-in Docker API behind it.
+type dashboard struct {
+	// URL is where the server listens, with no path.
+	URL string
+	// Stop shuts the server down the way main does. That happens when the test
+	// ends in any case.
+	Stop func()
+	// ShowSwarm changes the swarm behind the server to the one in
+	// testdata/<fixture>.
+	ShowSwarm func(fixture string)
+}
+
+// settings gives the server environment variables on top of the defaults.
+// They can depend on where the server listens, which a redirect URL does.
+type settings func(url string) map[string]string
+
+// startDashboard runs the whole server against the swarm in
+// testdata/<fixture>.
+func startDashboard(t *testing.T, fixture string, extra ...settings) *dashboard {
 	t.Helper()
 
 	// Whatever the developer's shell has set must not reach the server. This
@@ -82,13 +103,25 @@ func startDashboard(t *testing.T, dir string) (url string, stop func()) {
 	} {
 		t.Setenv(name, "")
 	}
-	t.Setenv("DOCKER_HOST", "tcp://"+fakeDocker(t, dir).Listener.Addr().String())
+	docker, show := fakeDocker(t, fixture)
+	t.Setenv("DOCKER_HOST", "tcp://"+docker.Listener.Addr().String())
 	t.Setenv("CLUSTER_NAME", "Fixture Swarm")
+
+	// The listener comes first, so that the settings can name its address.
+	srv := httptest.NewUnstartedServer(nil)
+	url := "http://" + srv.Listener.Addr().String()
+	for _, each := range extra {
+		for name, value := range each(url) {
+			t.Setenv(name, value)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	handler, hub := newHandler(ctx, config.LoadConfig())
-	srv := httptest.NewServer(handler)
-	stop = sync.OnceFunc(func() {
+	srv.Config.Handler = handler
+	srv.Start()
+
+	stop := sync.OnceFunc(func() {
 		cancel()
 		closing, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
@@ -96,22 +129,24 @@ func startDashboard(t *testing.T, dir string) (url string, stop func()) {
 		srv.Close()
 	})
 	t.Cleanup(stop)
-	return srv.URL, stop
+	return &dashboard{URL: url, Stop: stop, ShowSwarm: show}
 }
 
 // openDashboard starts a browser and a server for the swarm in
 // testdata/<fixture>, and returns the page once it shows cards.
 func openDashboard(t *testing.T, fixture string, cards int) *page {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("needs a browser")
-	}
 
 	p := startBrowser(t)
-	url, _ := startDashboard(t, filepath.Join("testdata", fixture))
-	p.open(t, url+"/")
-	p.waitFor(t, fmt.Sprintf(`document.querySelectorAll('.server-card').length === %d`, cards))
+	p.open(t, startDashboard(t, fixture).URL+"/")
+	p.waitForCards(t, cards)
 	return p
+}
+
+// waitForCards waits until the dashboard shows this many cards.
+func (p *page) waitForCards(t *testing.T, cards int) {
+	t.Helper()
+	p.waitFor(t, fmt.Sprintf(`document.querySelectorAll('.server-card').length === %d`, cards))
 }
 
 // card is what one card on the dashboard shows: a node's, or the one for
@@ -421,6 +456,15 @@ func TestDashboardInABrowser_EmptySwarm(t *testing.T) {
 
 	if drawer := p.text(t, ".v-navigation-drawer"); !strings.Contains(drawer, "Nodes 1/1") || !strings.Contains(drawer, "Services 0/0") {
 		t.Errorf("the drawer reads: %s", drawer)
+	}
+
+	// At the root the settings keep the plain names they have always had, so
+	// that upgrading does not reset anybody's filters. Under any other
+	// context root they are named after it; see the context root test.
+	var settings []string
+	p.eval(t, `Object.keys(localStorage).sort()`, &settings)
+	if want := []string{"drawer", "filters.5", "sort"}; !reflect.DeepEqual(settings, want) {
+		t.Errorf("settings are saved as %q, want %q", settings, want)
 	}
 
 	assertNothingWentWrong(t, p)
