@@ -4,9 +4,13 @@
 <head>
   <meta charset="utf-8">
   <title>Docker Swarm Monitor</title>
-  <link href="https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
-  <link href="https://fonts.bunny.net/css?family=roboto:400,500,700" rel="stylesheet" />
+  <!-- The libraries and fonts, here and in the import map below, are copies
+       kept under vendor/ and served with the rest of the page, so the
+       dashboard needs nothing from any other site. web/vendor.sh says which
+       versions they are and fetches them again. -->
+  <link href="./vendor/vuetify/vuetify.min.css" rel="stylesheet">
+  <link href="./vendor/mdi/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="./vendor/roboto/roboto.css" rel="stylesheet">
 
   <style>
     .server-card {
@@ -162,10 +166,10 @@
   <script type="importmap">
     {
       "imports": {
-        "vue": "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.js",
-        "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.esm.js",
-        "@vueuse/shared": "https://cdn.jsdelivr.net/npm/@vueuse/shared@12/index.min.mjs",
-        "@vueuse/core": "https://cdn.jsdelivr.net/npm/@vueuse/core@12/index.min.mjs",
+        "vue": "./vendor/vue/vue.esm-browser.prod.js",
+        "vuetify": "./vendor/vuetify/vuetify.esm.js",
+        "@vueuse/shared": "./vendor/vueuse/shared/index.mjs",
+        "@vueuse/core": "./vendor/vueuse/core/index.mjs",
         "./details.js": "./details.js?r=2",
         "./filters.js": "./filters.js?r=2",
         "./node.js": "./node.js?r=2",
@@ -333,7 +337,6 @@
       <v-snackbar :model-value="stale && wsState === 'connected'" color="warning" location="top" :timeout="-1">
         The server cannot read the swarm. This view is from {{ staleSince }}.
       </v-snackbar>
-
 
       <v-main aria-label="Nodes and Services List">
         <v-container fluid>
@@ -689,7 +692,6 @@
           stale.value = !!data.stale;
           lastUpdated.value = data.lastUpdated ?? null;
 
-
           networks.value = data.networks;
 
           if (!filters.value.selectionsInitialized) {
@@ -781,7 +783,6 @@
           connectionColor,
           connectionLabel,
           drawer,
-
           wsState,
           vuetifyDefaults,
           filters,

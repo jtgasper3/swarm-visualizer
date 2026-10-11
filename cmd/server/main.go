@@ -164,12 +164,11 @@ var hostPattern = regexp.MustCompile(`^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9
 //
 // Scripts and styles may be inline, and scripts may be evaluated, because the
 // page is written that way: its templates are compiled in the browser. The
-// policy is therefore about origins. It does not forbid framing, since nothing
-// here acts on a click and a dashboard is often embedded in another page.
+// policy is therefore about origins, and the only one is this server: the
+// libraries and fonts the page uses are served with it. It does not forbid
+// framing, since nothing here acts on a click and a dashboard is often embedded
+// in another page.
 func pagePolicy(h http.Handler) http.Handler {
-	const libraries = "https://cdn.jsdelivr.net"
-	const fonts = "https://fonts.bunny.net"
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 'self' covers the WebSocket in current browsers; older ones need the
 		// ws: and wss: forms of this host spelled out.
@@ -180,9 +179,9 @@ func pagePolicy(h http.Handler) http.Handler {
 
 		w.Header().Set("Content-Security-Policy", strings.Join([]string{
 			"default-src 'self'",
-			"script-src 'self' 'unsafe-inline' 'unsafe-eval' " + libraries,
-			"style-src 'self' 'unsafe-inline' " + libraries + " " + fonts,
-			"font-src 'self' " + libraries + " " + fonts,
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+			"style-src 'self' 'unsafe-inline'",
+			"font-src 'self'",
 			"img-src 'self' data:",
 			"connect-src " + connect,
 			"object-src 'none'",

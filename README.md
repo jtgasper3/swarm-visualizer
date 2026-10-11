@@ -194,7 +194,7 @@ viz:
 
 ### What the browser is told
 
-Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, and the page is served with a `Content-Security-Policy` that lets it load scripts, styles and fonts only from the server itself and the two sites its libraries and fonts come from (`cdn.jsdelivr.net` and `fonts.bunny.net`), and connect only back to the server. The policy does not forbid embedding the dashboard in another page; add `frame-ancestors` at a reverse proxy if you want that.
+Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, and the page is served with a `Content-Security-Policy` that lets it load scripts, styles and fonts only from the server itself, and connect only back to it. The libraries and fonts the page uses are part of the server (see *Frontend libraries* below), so the dashboard works on a network with no route to the internet. The policy does not forbid embedding the dashboard in another page; add `frame-ancestors` at a reverse proxy if you want that.
 
 ### Authentication is not authorization
 
@@ -225,6 +225,10 @@ docker compose up --watch
 
 > The compose file mounts `web/static` and points `STATIC_DIR` at it, so the frontend can be modified on the fly. Without `STATIC_DIR` the server uses the copy compiled into it.
 
+
+### Frontend libraries
+
+Vue, Vuetify, VueUse, the Material Design icon font and Roboto are kept in `web/static/vendor` and compiled into the server with the rest of the frontend; nothing is loaded from a CDN. `web/vendor.sh` names the versions and downloads them, and `web/vendor.sha256` records what it fetched. To update one, change its version in the script, run it, and review the diff. A test fails if the files and the checksums disagree, or if the page refers to anything outside the server.
 
 ### Spin up some test stacks and individual services
 

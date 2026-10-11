@@ -200,6 +200,27 @@ func TestStaticHandler(t *testing.T) {
 		}
 	}
 
+	// The libraries and fonts come from the binary too. Their types matter:
+	// with nosniff set, a browser will not run a module or apply a stylesheet
+	// that is served as anything else.
+	vendored := map[string]string{
+		"/vendor/vue/vue.esm-browser.prod.js":                    "text/javascript",
+		"/vendor/vueuse/core/index.mjs":                          "text/javascript",
+		"/vendor/vuetify/vuetify.min.css":                        "text/css",
+		"/vendor/roboto/files/roboto-latin-400-normal.woff2":     "font/woff2",
+		"/vendor/mdi/fonts/materialdesignicons-webfont.woff2":    "font/woff2",
+		"/vendor/mdi/css/materialdesignicons.min.css?v=anything": "text/css",
+	}
+	for path, wantType := range vendored {
+		rr := get(builtIn, path)
+		if rr.Code != http.StatusOK || rr.Header().Get("ETag") == "" {
+			t.Errorf("GET %s: status %d, ETag %q", path, rr.Code, rr.Header().Get("ETag"))
+		}
+		if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, wantType) {
+			t.Errorf("GET %s: Content-Type %q, want %s", path, got, wantType)
+		}
+	}
+
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>from disk</html>"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
@@ -223,6 +244,10 @@ func TestPagePolicy(t *testing.T) {
 	}
 
 	csp := policy("dashboard.example.com:8080")
+	// Everything the page loads is served with it, so no other site is named.
+	if strings.Contains(csp, "https://") || strings.Contains(csp, "http://") {
+		t.Errorf("policy %q names another site", csp)
+	}
 	for _, want := range []string{
 		"default-src 'self'",
 		"object-src 'none'",
