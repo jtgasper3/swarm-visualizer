@@ -52,6 +52,7 @@ General Environment Variables:
 - `CLUSTER_NAME`: title to display on the main page
 - `CONTEXT_ROOT`: the context root of the web app; useful when working with reverse-proxies. A leading and a trailing slash are added if missing (default: `/`)
 - `LISTENER_PORT`: port to listen on (default: `8080`)
+- `STATIC_DIR`: serve the frontend from this directory instead of the copy built into the server; meant for development (default: `(built in)`)
 - `MAX_WS_CONNECTIONS`: maximum number of concurrent WebSocket (dashboard) connections; further connections are rejected until a slot frees up (default: `256`)
 - `HIDE_ALL_CONFIGS`: hides all configs values (default: `false`)
 - `HIDE_ALL_ENVS`: hides all environment variables values (default: `false`)
@@ -191,6 +192,10 @@ viz:
     - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+### What the browser is told
+
+Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, and the page is served with a `Content-Security-Policy` that lets it load scripts, styles and fonts only from the server itself and the two sites its libraries and fonts come from (`cdn.jsdelivr.net` and `fonts.bunny.net`), and connect only back to the server. The policy does not forbid embedding the dashboard in another page; add `frame-ancestors` at a reverse proxy if you want that.
+
 ### Authentication is not authorization
 
 Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies at login that the user holds a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
@@ -218,7 +223,7 @@ docker swarm init
 docker compose up --watch
 ```
 
-> The compose file mounts the static assets so they can be modified on the fly.
+> The compose file mounts `web/static` and points `STATIC_DIR` at it, so the frontend can be modified on the fly. Without `STATIC_DIR` the server uses the copy compiled into it.
 
 
 ### Spin up some test stacks and individual services

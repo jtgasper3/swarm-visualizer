@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -102,5 +104,163 @@ func TestRevalidated(t *testing.T) {
 	}
 	if body := upgraded.Body.String(); body != "export const v = 2;" {
 		t.Errorf("GET /utils.js after an upgrade: body = %q, want the new file", body)
+	}
+}
+
+// TestWithETags verifies that files with no modification time, as the ones
+// built into the binary are, can still be revalidated, and that the validator
+// follows the content.
+func TestWithETags(t *testing.T) {
+	serve := func(files fstest.MapFS, path, ifNoneMatch string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", ifNoneMatch)
+		}
+		rr := httptest.NewRecorder()
+		revalidated(withETags(files, http.FileServerFS(files))).ServeHTTP(rr, req)
+		return rr
+	}
+	v1 := fstest.MapFS{
+		"index.html":     {Data: []byte("<html>v1</html>")},
+		"utils.js":       {Data: []byte("export const v = 1;")},
+		"vendor/lib.js":  {Data: []byte("export default 1;")},
+		"vendor/same.js": {Data: []byte("export default 1;")},
+	}
+
+	tags := map[string]string{}
+	for _, path := range []string{"/", "/utils.js", "/vendor/lib.js"} {
+		first := serve(v1, path, "")
+		if first.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d, want %d", path, first.Code, http.StatusOK)
+		}
+		tag := first.Header().Get("ETag")
+		if tag == "" {
+			t.Fatalf("GET %s: no ETag, so the browser has nothing to revalidate with", path)
+		}
+		if first.Header().Get("Last-Modified") != "" {
+			t.Fatalf("GET %s: this test is meant to cover files with no modification time", path)
+		}
+		tags[path] = tag
+
+		again := serve(v1, path, tag)
+		if again.Code != http.StatusNotModified {
+			t.Errorf("GET %s with its own ETag: status = %d, want %d", path, again.Code, http.StatusNotModified)
+		}
+		if again.Body.Len() != 0 {
+			t.Errorf("GET %s with its own ETag: the body was sent again", path)
+		}
+	}
+
+	if tags["/"] == tags["/utils.js"] {
+		t.Error("different files must have different ETags")
+	}
+	if same := serve(v1, "/vendor/same.js", "").Header().Get("ETag"); same != tags["/vendor/lib.js"] {
+		t.Error("the ETag should follow the content, so identical files share one")
+	}
+	if tag := serve(v1, "/missing.js", "").Header().Get("ETag"); tag != "" {
+		t.Errorf("a missing file was given the ETag %s", tag)
+	}
+
+	// Another release: one file changed, in either direction of time.
+	v2 := fstest.MapFS{
+		"index.html": {Data: []byte("<html>v1</html>")},
+		"utils.js":   {Data: []byte("export const v = 2;")},
+	}
+	changed := serve(v2, "/utils.js", tags["/utils.js"])
+	if changed.Code != http.StatusOK || changed.Body.String() != "export const v = 2;" {
+		t.Errorf("a changed file was not sent: status %d, body %q", changed.Code, changed.Body.String())
+	}
+	if unchanged := serve(v2, "/", tags["/"]); unchanged.Code != http.StatusNotModified {
+		t.Errorf("an unchanged file was sent again: status %d", unchanged.Code)
+	}
+}
+
+// TestStaticHandler verifies both sources of the frontend: the copy built into
+// the binary, and a directory given in its place.
+func TestStaticHandler(t *testing.T) {
+	get := func(h http.Handler, path string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "http://dashboard.example.com"+path, nil))
+		return rr
+	}
+
+	builtIn := staticHandler("")
+	page := get(builtIn, "/")
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `<div id="app">`) {
+		t.Fatalf("the built-in page was not served: status %d", page.Code)
+	}
+	for _, header := range []string{"ETag", "Cache-Control", "Content-Security-Policy"} {
+		if page.Header().Get(header) == "" {
+			t.Errorf("the built-in page has no %s header", header)
+		}
+	}
+	for _, module := range []string{"/utils.js", "/node.js", "/unassigned.js"} {
+		if rr := get(builtIn, module); rr.Code != http.StatusOK || rr.Header().Get("ETag") == "" {
+			t.Errorf("GET %s: status %d, ETag %q", module, rr.Code, rr.Header().Get("ETag"))
+		}
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>from disk</html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fromDisk := get(staticHandler(dir), "/")
+	if fromDisk.Body.String() != "<html>from disk</html>" {
+		t.Errorf("STATIC_DIR was not served: %q", fromDisk.Body.String())
+	}
+	if fromDisk.Header().Get("Cache-Control") != "no-cache" || fromDisk.Header().Get("Last-Modified") == "" {
+		t.Errorf("files from disk should be revalidated by modification time: %v", fromDisk.Header())
+	}
+}
+
+func TestPagePolicy(t *testing.T) {
+	policy := func(host string) string {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Host = host
+		rr := httptest.NewRecorder()
+		pagePolicy(http.NotFoundHandler()).ServeHTTP(rr, req)
+		return rr.Header().Get("Content-Security-Policy")
+	}
+
+	csp := policy("dashboard.example.com:8080")
+	for _, want := range []string{
+		"default-src 'self'",
+		"object-src 'none'",
+		"base-uri 'self'",
+		"connect-src 'self' ws://dashboard.example.com:8080 wss://dashboard.example.com:8080",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("policy %q does not contain %q", csp, want)
+		}
+	}
+	if got := policy("[2001:db8::1]:8080"); !strings.Contains(got, "ws://[2001:db8::1]:8080") {
+		t.Errorf("an IPv6 host was not allowed its WebSocket: %q", got)
+	}
+
+	// The Host header is the client's to write. One that is not plainly a host
+	// must not be copied into the policy, where it could add sources of its own.
+	for _, host := range []string{"evil.example.com; script-src *", "a b", "evil.example.com/x", "*", ""} {
+		got := policy(host)
+		if !strings.Contains(got, "connect-src 'self';") {
+			t.Errorf("Host %q changed the policy: %q", host, got)
+		}
+		if strings.Contains(got, "script-src *") || strings.Count(got, "script-src") != 1 {
+			t.Errorf("Host %q added to the policy: %q", host, got)
+		}
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	rr := httptest.NewRecorder()
+	securityHeaders(healthzHandler(func() bool { return true })).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if got := rr.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+	}
+	if rr.Body.String() != "ok" {
+		t.Errorf("the wrapped handler did not run: %q", rr.Body.String())
 	}
 }

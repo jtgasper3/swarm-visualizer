@@ -9,17 +9,16 @@ services:
           - node.role == manager
     develop:
       watch:
-        - action: sync
-          path: ./web/static
-          target: /static
-          initial_sync: true
         - action: rebuild
           path: .
           ignore:
-            - ./web/
+            - ./web/static/
     env_file: "./dev.env"
     environment:
       - CLUSTER_NAME=Local Swarm
+      # Serve the frontend from the mount below instead of the copy built into
+      # the binary, so edits show up on the next page load.
+      - STATIC_DIR=/static
       # - ENABLE_AUTHN=true
       # - ENABLE_AUTHZ=true
       # Other OIDC (sensitive) variables are set in the .gitignore'd env file
@@ -39,6 +38,7 @@ services:
       - client_secret
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./web/static:/static:ro
     
 secrets:
   client_secret:
