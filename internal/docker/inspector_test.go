@@ -11,10 +11,16 @@ import (
 	"github.com/moby/moby/api/types/swarm"
 )
 
-// countingSource records how often the service list is read.
+// countingSource records how often the service and task lists are read.
 type countingSource struct {
 	*fakeSource
 	serviceReads int
+	taskReads    int
+}
+
+func (c *countingSource) Tasks(ctx context.Context) ([]swarm.Task, error) {
+	c.taskReads++
+	return c.fakeSource.Tasks(ctx)
 }
 
 func (c *countingSource) Services(ctx context.Context) ([]swarm.Service, error) {

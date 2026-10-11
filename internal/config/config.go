@@ -10,9 +10,12 @@ import (
 )
 
 type Config struct {
-	ClusterName        string
-	ContextRoot        string
-	ListenerPort       string
+	ClusterName  string
+	ContextRoot  string
+	ListenerPort string
+	// StaticDir, when set, serves the frontend from that directory instead of
+	// the copy built into the binary.
+	StaticDir          string
 	AuthEnabled        bool
 	OAuthConfig        OAuthConfig
 	TrustedProxies     []*net.IPNet
@@ -121,6 +124,7 @@ func LoadConfig() *Config {
 		ClusterName:  os.Getenv("CLUSTER_NAME"),
 		ContextRoot:  contextRoot,
 		ListenerPort: getEnv("LISTENER_PORT", defaultListenerPort),
+		StaticDir:    os.Getenv("STATIC_DIR"),
 		AuthEnabled:  authEnabled,
 		OAuthConfig: OAuthConfig{
 			ClientID:         os.Getenv("OIDC_CLIENT_ID"),

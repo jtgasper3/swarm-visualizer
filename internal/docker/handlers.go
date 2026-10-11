@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/url"
@@ -61,8 +62,17 @@ type Hub struct {
 	// unlimited.
 	maxClients int
 
+	// closed is set by Close; no client is registered after it.
+	closed bool
+	// writers counts the running writePump goroutines, so that Close can wait
+	// for their closing frames to go out.
+	writers sync.WaitGroup
+
 	// broadcast carries marshalled snapshots from the inspector to runBroadcasts.
 	broadcast chan []byte
+	// arrivals is signalled when a client connects while there were none, so
+	// the inspector can stop idling without waiting for its next slow poll.
+	arrivals chan struct{}
 }
 
 // newHub creates a Hub configured from cfg. validate may be nil when auth is
@@ -74,6 +84,39 @@ func newHub(cfg *config.Config, validate TokenValidator) *Hub {
 		clients:    make(map[*wsClient]struct{}),
 		maxClients: cfg.MaxWSConnections,
 		broadcast:  make(chan []byte, 1),
+		arrivals:   make(chan struct{}, 1),
+	}
+}
+
+// Idle reports whether nobody is connected.
+func (h *Hub) Idle() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.clients) == 0
+}
+
+// Close disconnects every client with a "going away" close and refuses new
+// ones. It returns once the closing frames have been written or ctx ends.
+// Without it a shutdown simply drops the connections, which a browser reports
+// as an abnormal closure.
+func (h *Hub) Close(ctx context.Context) {
+	h.mu.Lock()
+	h.closed = true
+	for c := range h.clients {
+		delete(h.clients, c)
+		c.closeCode = websocket.CloseGoingAway
+		close(c.send)
+	}
+	h.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		h.writers.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
 	}
 }
 
@@ -117,9 +160,14 @@ func pongWait() time.Duration   { return time.Duration(pongWaitNanos.Load()) }
 type wsClient struct {
 	conn *websocket.Conn
 	send chan []byte
+	// closeCode is the status sent when send is closed. It is set before the
+	// channel is closed and read only after, by writePump.
+	closeCode int
 }
 
-func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config, validate TokenValidator) *Hub {
+// RegisterDockerHandlers starts polling the swarm and serves the snapshots over
+// a WebSocket. The polling stops when ctx ends.
+func RegisterDockerHandlers(ctx context.Context, mux *http.ServeMux, cfg *config.Config, validate TokenValidator) *Hub {
 	hub := newHub(cfg, validate)
 
 	if err := validateSensitiveDataPaths(cfg.SensitiveDataPaths); err != nil {
@@ -131,7 +179,7 @@ func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config, validate Tok
 		log.Fatal("Docker client error:", err)
 	}
 
-	go newInspector(cfg, src, hub).run()
+	go newInspector(cfg, src, hub).run(ctx)
 	go hub.runBroadcasts()
 
 	mux.HandleFunc(cfg.ContextRoot+"ws", hub.handleConnections)
@@ -172,15 +220,19 @@ func (h *Hub) handleConnections(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Client connected: %s", r.RemoteAddr)
 	}
 
-	c := &wsClient{conn: ws, send: make(chan []byte, 1)}
+	c := &wsClient{conn: ws, send: make(chan []byte, 1), closeCode: websocket.CloseNormalClosure}
 
 	if !h.register(c) {
-		// Capacity was reached between the pre-upgrade check and here.
-		log.Printf("Connection rejected, server at capacity (%d): %s", h.maxClients, r.RemoteAddr)
+		// Capacity was reached between the pre-upgrade check and here, or the
+		// server is shutting down.
+		log.Printf("Connection rejected, server at capacity (%d) or shutting down: %s", h.maxClients, r.RemoteAddr)
 		ws.Close()
 		return
 	}
-	go c.writePump()
+	go func() {
+		defer h.writers.Done()
+		c.writePump()
+	}()
 
 	// Detect dead peers: require a pong (or any frame) within pongWait and
 	// extend the deadline whenever one arrives. writePump's pings keep a live
@@ -218,7 +270,7 @@ func (c *wsClient) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 			if !ok {
 				// Unregistered: send a close frame and stop.
-				c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(c.closeCode, ""))
 				c.conn.Close()
 				return
 			}
@@ -250,15 +302,24 @@ func (h *Hub) atCapacity() bool {
 
 // register adds the client to the registry and seeds it with the latest
 // snapshot, all under the broadcast lock. It returns false (registering
-// nothing) if the concurrent connection cap is reached.
+// nothing) if the concurrent connection cap is reached or the hub is closed.
+// The caller starts the client's writePump after a successful registration and
+// calls writers.Done when it returns.
 func (h *Hub) register(c *wsClient) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if h.maxClients > 0 && len(h.clients) >= h.maxClients {
+	if h.closed || (h.maxClients > 0 && len(h.clients) >= h.maxClients) {
 		return false
 	}
+	if len(h.clients) == 0 {
+		select {
+		case h.arrivals <- struct{}{}:
+		default:
+		}
+	}
 	h.clients[c] = struct{}{}
+	h.writers.Add(1)
 
 	// Seed the most recently fanned-out frame, if any, under the same lock that
 	// guards broadcasts. This keeps registration and seeding atomic with respect
@@ -276,7 +337,7 @@ func (h *Hub) unregister(c *wsClient) {
 	h.mu.Lock()
 	if _, ok := h.clients[c]; ok {
 		delete(h.clients, c)
-		// Closing send terminates writePump's range. Safe against the
+		// Closing send makes writePump say goodbye and stop. Safe against the
 		// broadcaster because it only enqueues to clients still in the map
 		// and holds the same lock.
 		close(c.send)
@@ -301,7 +362,7 @@ func (h *Hub) runBroadcasts() {
 // enqueue performs a non-blocking, latest-wins handoff to a client's send
 // buffer. If the buffer already holds an undelivered frame, that stale frame
 // is discarded in favor of msg so a lagging client always receives the most
-// recent snapshot next. Callers must hold clientsMu.
+// recent snapshot next. Callers must hold h.mu.
 func enqueue(c *wsClient, msg []byte) {
 	select {
 	case c.send <- msg:

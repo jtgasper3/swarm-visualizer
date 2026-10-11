@@ -52,6 +52,7 @@ General Environment Variables:
 - `CLUSTER_NAME`: title to display on the main page
 - `CONTEXT_ROOT`: the context root of the web app; useful when working with reverse-proxies. A leading and a trailing slash are added if missing (default: `/`)
 - `LISTENER_PORT`: port to listen on (default: `8080`)
+- `STATIC_DIR`: serve the frontend from this directory instead of the copy built into the server; meant for development (default: `(built in)`)
 - `MAX_WS_CONNECTIONS`: maximum number of concurrent WebSocket (dashboard) connections; further connections are rejected until a slot frees up (default: `256`)
 - `HIDE_ALL_CONFIGS`: hides all configs values (default: `false`)
 - `HIDE_ALL_ENVS`: hides all environment variables values (default: `false`)
@@ -97,6 +98,10 @@ environment:
   CONTEXT_ROOT: /visualizer/
   TRUSTED_PROXIES: 10.0.0.0/8
 ```
+
+## Health and stale data
+
+`/healthz` answers 200 once the server has read the swarm for the first time, and keeps doing so afterwards: the container is not reported unhealthy, and so not restarted, because the Docker API went away for a while. What tells you about that is the dashboard itself. When the server has been unable to read the swarm for more than about fifteen seconds, the page says so and shows when its data dates from, and the connection indicator turns amber. The server logs the first failure, a reminder every thirty seconds, and the recovery.
 
 ## Data Sanitization
 
@@ -187,6 +192,10 @@ viz:
     - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+### What the browser is told
+
+Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, and the page is served with a `Content-Security-Policy` that lets it load scripts, styles and fonts only from the server itself, and connect only back to it. The libraries and fonts the page uses are part of the server (see *Frontend libraries* below), so the dashboard works on a network with no route to the internet. The policy does not forbid embedding the dashboard in another page; add `frame-ancestors` at a reverse proxy if you want that.
+
 ### Authentication is not authorization
 
 Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies at login that the user holds a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
@@ -214,8 +223,12 @@ docker swarm init
 docker compose up --watch
 ```
 
-> The compose file mounts the static assets so they can be modified on the fly.
+> The compose file mounts `web/static` and points `STATIC_DIR` at it, so the frontend can be modified on the fly. Without `STATIC_DIR` the server uses the copy compiled into it.
 
+
+### Frontend libraries
+
+Vue, Vuetify, VueUse, the Material Design icon font and Roboto are kept in `web/static/vendor` and compiled into the server with the rest of the frontend; nothing is loaded from a CDN. `web/vendor.sh` names the versions and downloads them, and `web/vendor.sha256` records what it fetched. To update one, change its version in the script, run it, and review the diff. A test fails if the files and the checksums disagree, or if the page refers to anything outside the server.
 
 ### Spin up some test stacks and individual services
 

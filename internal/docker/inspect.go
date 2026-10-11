@@ -22,8 +22,14 @@ import (
 )
 
 type SwarmData struct {
-	ClusterName string            `json:"clusterName"`
-	AuthEnabled bool              `json:"authEnabled"`
+	ClusterName string `json:"clusterName"`
+	AuthEnabled bool   `json:"authEnabled"`
+	// Stale is set while the swarm cannot be read, and LastUpdated then says
+	// how old the rest of the snapshot is. A snapshot is only sent when it
+	// changes, so without these a view of a swarm the server has lost touch
+	// with looks the same as a view of one where nothing is happening.
+	Stale       bool              `json:"stale,omitempty"`
+	LastUpdated *time.Time        `json:"lastUpdated,omitempty"`
 	Networks    []network.Summary `json:"networks"`
 	Nodes       []swarm.Node      `json:"nodes"`
 	Services    []swarm.Service   `json:"services"`
@@ -113,7 +119,64 @@ const (
 	// structuralPollInterval is how often the slower-changing nodes, services,
 	// and networks are refreshed.
 	structuralPollInterval = 5 * time.Second
+	// idleTaskPollInterval replaces taskPollInterval while nobody is connected:
+	// there is no one to keep the tasks fresh to the second for. A client that
+	// connects is polled for at once.
+	idleTaskPollInterval = structuralPollInterval
+	// dockerCallTimeout bounds one poll of the Docker API: the task list, or
+	// the nodes, services and networks together. Without a bound, a daemon or
+	// socket proxy that accepts the connection and then says nothing would
+	// hold the poll loop for good.
+	dockerCallTimeout = 10 * time.Second
+	// staleAfter is how long the swarm can go unread before a snapshot says
+	// so. It has to be longer than every poll interval above. The snapshot is
+	// reassessed between polls, so when calls hang rather than fail it is said
+	// up to two timeouts later.
+	staleAfter = 15 * time.Second
+	// pollErrorLogInterval is how often a failure that keeps repeating is
+	// logged again after its first report.
+	pollErrorLogInterval = 30 * time.Second
 )
+
+// pollErrors keeps a failure that repeats on every poll from filling the log.
+// The first failure is logged, then one reminder per pollErrorLogInterval, then
+// the recovery.
+type pollErrors struct {
+	// what was being fetched, for the log line.
+	what string
+	// logf is log.Printf outside tests.
+	logf func(format string, args ...any)
+
+	// since is when the current run of failures began; zero while healthy.
+	since   time.Time
+	lastLog time.Time
+	skipped int
+}
+
+func (p *pollErrors) failed(now time.Time, err error) {
+	// Several calls can fail in one poll; keep their errors on one log line.
+	reason := strings.ReplaceAll(err.Error(), "\n", "; ")
+
+	switch {
+	case p.since.IsZero():
+		p.since, p.lastLog, p.skipped = now, now, 0
+		p.logf("Error fetching %s: %s", p.what, reason)
+	case now.Sub(p.lastLog) < pollErrorLogInterval:
+		p.skipped++
+	default:
+		p.logf("Still failing to fetch %s after %s (%d errors not logged): %s",
+			p.what, now.Sub(p.since).Round(time.Second), p.skipped, reason)
+		p.lastLog, p.skipped = now, 0
+	}
+}
+
+func (p *pollErrors) succeeded(now time.Time) {
+	if p.since.IsZero() {
+		return
+	}
+	p.logf("Fetching %s works again after %s", p.what, now.Sub(p.since).Round(time.Second))
+	p.since = time.Time{}
+}
 
 // inspector polls the swarm and publishes a snapshot whenever it changes. Tasks
 // are polled frequently for freshness; nodes, services, and networks change
@@ -121,14 +184,18 @@ const (
 // value for each group is cached between ticks and reassembled on every
 // publish. All of its state belongs to the single goroutine that calls run.
 //
-// Reassembly applies SensitiveDataPaths via ClearByPath, which only zeroes
-// fields and is therefore idempotent; re-applying it to a cached (already
-// cleared) slice that is also referenced by the previously published snapshot
-// leaves that snapshot's bytes unchanged, so change detection stays correct.
+// Each group is sanitized once, when it is fetched, and the cached slices are
+// shared with the previously published snapshot. Anything that later changes
+// them in place therefore has to drop that snapshot, or the change would not
+// be seen as one.
 type inspector struct {
 	cfg *config.Config
 	src swarmSource
 	hub *Hub
+	// now is the clock; tests replace it.
+	now func() time.Time
+	// callTimeout is dockerCallTimeout outside tests.
+	callTimeout time.Duration
 
 	nodes    []swarm.Node
 	services []swarm.Service
@@ -138,28 +205,87 @@ type inspector struct {
 	haveStructural bool
 	haveTasks      bool
 
+	// lastStructural and lastTasks are when each group was last read
+	// successfully. lastTaskPoll is when the tasks were last asked for.
+	lastStructural time.Time
+	lastTasks      time.Time
+	lastTaskPoll   time.Time
+
+	structuralErrors pollErrors
+	taskErrors       pollErrors
+
 	// hiddenEnvs is each service's hide-envs list as of the last structural
 	// refresh, kept so it can be applied to the tasks' own copies of the env.
 	hiddenEnvs hiddenEnvs
 	// seenTasks holds the ID of every task the previous task poll returned.
 	seenTasks map[string]struct{}
 
+	// The configured redaction paths, by the group they reach into, so that
+	// each is applied when its group is fetched and not on every publish.
+	// otherPaths are the few that address the snapshot itself.
+	structuralPaths []string
+	taskPaths       []string
+	otherPaths      []string
+
 	// lastPublished is the previous snapshot, kept for change detection.
 	lastPublished *SwarmData
 }
 
 func newInspector(cfg *config.Config, src swarmSource, hub *Hub) *inspector {
-	return &inspector{cfg: cfg, src: src, hub: hub}
+	in := &inspector{
+		cfg:              cfg,
+		src:              src,
+		hub:              hub,
+		now:              time.Now,
+		callTimeout:      dockerCallTimeout,
+		structuralErrors: pollErrors{what: "nodes, services and networks", logf: log.Printf},
+		taskErrors:       pollErrors{what: "tasks", logf: log.Printf},
+	}
+
+	for _, path := range cfg.SensitiveDataPaths {
+		group, _, _ := strings.Cut(path, ".")
+		switch {
+		case strings.EqualFold(group, "nodes"), strings.EqualFold(group, "services"), strings.EqualFold(group, "networks"):
+			in.structuralPaths = append(in.structuralPaths, path)
+		case strings.EqualFold(group, "tasks"):
+			in.taskPaths = append(in.taskPaths, path)
+		default:
+			in.otherPaths = append(in.otherPaths, path)
+		}
+	}
+	return in
+}
+
+// clearPaths applies redaction paths to data. A path that reaches into a group
+// clears the caller's values through the slice, but one that names a whole
+// group empties the field in data, so callers take the groups back from data
+// afterwards.
+func clearPaths(data *SwarmData, paths []string) {
+	for _, path := range paths {
+		if err := internal.ClearByPath(data, path); err != nil {
+			log.Println("Error clearing sensitive data:", err, path)
+		}
+	}
 }
 
 func (in *inspector) refreshStructural(ctx context.Context) bool {
-	n, errN := getNodesInfo(ctx, in.src, in.cfg)
-	s, hidden, errS := getServicesInfo(ctx, in.src, in.cfg)
-	nw, errNw := getNetworksInfo(ctx, in.src, in.cfg)
-	if errN != nil || errS != nil || errNw != nil {
+	// One deadline for the three calls, so a daemon that has stopped answering
+	// costs a single timeout and not three in a row.
+	callCtx, cancel := context.WithTimeout(ctx, in.callTimeout)
+	defer cancel()
+
+	n, errN := getNodesInfo(callCtx, in.src, in.cfg)
+	s, hidden, errS := getServicesInfo(callCtx, in.src, in.cfg)
+	nw, errNw := getNetworksInfo(callCtx, in.src, in.cfg)
+	if err := errors.Join(errN, errS, errNw); err != nil {
+		in.structuralErrors.failed(in.now(), err)
 		return false
 	}
-	in.nodes, in.services, in.networks = n, s, nw
+	in.structuralErrors.succeeded(in.now())
+
+	fetched := SwarmData{Nodes: n, Services: s, Networks: nw}
+	clearPaths(&fetched, in.structuralPaths)
+	in.nodes, in.services, in.networks = fetched.Nodes, fetched.Services, fetched.Networks
 	if !reflect.DeepEqual(hidden, in.hiddenEnvs) {
 		// The cached tasks were sanitized under the previous lists, and a label
 		// change creates no task to prompt a task poll. Apply the new lists
@@ -172,15 +298,21 @@ func (in *inspector) refreshStructural(ctx context.Context) bool {
 	}
 	in.hiddenEnvs = hidden
 	in.haveStructural = true
+	in.lastStructural = in.now()
 	return true
 }
 
 func (in *inspector) refreshTasks(ctx context.Context) bool {
-	all, err := in.src.Tasks(ctx)
+	in.lastTaskPoll = in.now()
+
+	callCtx, cancel := context.WithTimeout(ctx, in.callTimeout)
+	all, err := in.src.Tasks(callCtx)
+	cancel()
 	if err != nil {
-		log.Printf("Error fetching tasks: %v", err)
+		in.taskErrors.failed(in.now(), fmt.Errorf("tasks: %w", err))
 		return false
 	}
+	in.taskErrors.succeeded(in.now())
 
 	// A task's env is redacted using its service's hide-envs label, which is
 	// only re-read on the structural cadence. A task that was not there on the
@@ -196,8 +328,11 @@ func (in *inspector) refreshTasks(ctx context.Context) bool {
 		in.seenTasks[t.ID] = struct{}{}
 	}
 
-	in.tasks = sanitizeTasks(selectTasks(all), in.cfg, in.hiddenEnvs)
+	fetched := SwarmData{Tasks: sanitizeTasks(selectTasks(all), in.cfg, in.hiddenEnvs)}
+	clearPaths(&fetched, in.taskPaths)
+	in.tasks = fetched.Tasks
 	in.haveTasks = true
+	in.lastTasks = in.now()
 	return true
 }
 
@@ -211,6 +346,9 @@ func (in *inspector) hasUnseenTask(tasks []swarm.Task) bool {
 	return false
 }
 
+// publish sends the snapshot if it differs from the last one sent. It runs
+// after every poll, failed ones included: a snapshot turning stale is a change
+// like any other, and a failed poll is the only thing that brings it about.
 func (in *inspector) publish() {
 	// Don't publish a partial view before every group has loaded once.
 	if !in.haveStructural || !in.haveTasks {
@@ -226,11 +364,19 @@ func (in *inspector) publish() {
 		Tasks:       in.tasks,
 	}
 
-	for _, item := range in.cfg.SensitiveDataPaths {
-		if clearErr := internal.ClearByPath(&data, item); clearErr != nil {
-			log.Println("Error clearing sensitive data:", clearErr, item)
-		}
+	// The time stays put for as long as the reads keep failing, so a stale
+	// snapshot is sent once and not on every poll.
+	oldest := in.lastTasks
+	if in.lastStructural.Before(oldest) {
+		oldest = in.lastStructural
 	}
+	if in.now().Sub(oldest) > staleAfter {
+		oldest = oldest.UTC().Truncate(time.Second)
+		data.Stale = true
+		data.LastUpdated = &oldest
+	}
+
+	clearPaths(&data, in.otherPaths)
 
 	if in.lastPublished == nil || !reflect.DeepEqual(data, *in.lastPublished) {
 		jsonBytes, err := json.Marshal(data)
@@ -255,9 +401,34 @@ func (in *inspector) load(ctx context.Context) {
 	in.publish()
 }
 
-func (in *inspector) run() {
-	ctx := context.Background()
+// tasksDue reports whether a task tick should poll. With nobody connected the
+// tasks are read at the slower idle interval.
+func (in *inspector) tasksDue() bool {
+	return !in.hub.Idle() || in.now().Sub(in.lastTaskPoll) >= idleTaskPollInterval
+}
 
+// taskTick is the loop's response to the task ticker.
+func (in *inspector) taskTick(ctx context.Context) {
+	if in.tasksDue() {
+		in.pollTasks(ctx)
+	}
+}
+
+// pollTasks reads the tasks and publishes. It publishes whether or not the
+// read worked, because a failed read is how a snapshot comes to be stale.
+func (in *inspector) pollTasks(ctx context.Context) {
+	in.refreshTasks(ctx)
+	in.publish()
+}
+
+// pollStructural does the same for the nodes, services and networks.
+func (in *inspector) pollStructural(ctx context.Context) {
+	in.refreshStructural(ctx)
+	in.publish()
+}
+
+// run polls until ctx ends.
+func (in *inspector) run(ctx context.Context) {
 	runStep(func() { in.load(ctx) })
 
 	taskTicker := time.NewTicker(taskPollInterval)
@@ -267,18 +438,16 @@ func (in *inspector) run() {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-taskTicker.C:
-			runStep(func() {
-				if in.refreshTasks(ctx) {
-					in.publish()
-				}
-			})
+			runStep(func() { in.taskTick(ctx) })
+		case <-in.hub.arrivals:
+			// Someone connected while the tasks were being read slowly. They
+			// were given the last snapshot; bring it up to date for them now.
+			runStep(func() { in.pollTasks(ctx) })
 		case <-structuralTicker.C:
-			runStep(func() {
-				if in.refreshStructural(ctx) {
-					in.publish()
-				}
-			})
+			runStep(func() { in.pollStructural(ctx) })
 		}
 	}
 }
@@ -299,8 +468,7 @@ func runStep(step func()) {
 func getNetworksInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]network.Summary, error) {
 	networks, err := src.Networks(ctx)
 	if err != nil {
-		log.Printf("Error fetching networks: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("networks: %w", err)
 	}
 
 	filteredNetworks := make([]network.Summary, 0, len(networks))
@@ -321,8 +489,7 @@ func getNetworksInfo(ctx context.Context, src swarmSource, cfg *config.Config) (
 func getNodesInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]swarm.Node, error) {
 	nodes, err := src.Nodes(ctx)
 	if err != nil {
-		log.Printf("Error fetching nodes: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("nodes: %w", err)
 	}
 
 	return sanitizeNodes(nodes, cfg), nil
@@ -333,8 +500,7 @@ func getNodesInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]s
 func getServicesInfo(ctx context.Context, src swarmSource, cfg *config.Config) ([]swarm.Service, hiddenEnvs, error) {
 	services, err := src.Services(ctx)
 	if err != nil {
-		log.Printf("Error fetching services: %v", err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("services: %w", err)
 	}
 
 	// Read the lists before sanitizing: HIDE_LABELS can remove the labels

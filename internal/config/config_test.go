@@ -309,3 +309,16 @@ func TestNormalizeContextRoot(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadConfig_StaticDir verifies the override for where the frontend is
+// served from; unset means the copy built into the binary.
+func TestLoadConfig_StaticDir(t *testing.T) {
+	setEnv(t, "STATIC_DIR", "")
+	if got := LoadConfig().StaticDir; got != "" {
+		t.Errorf("StaticDir = %q, want empty by default", got)
+	}
+	setEnv(t, "STATIC_DIR", "/static")
+	if got := LoadConfig().StaticDir; got != "/static" {
+		t.Errorf("StaticDir = %q, want /static", got)
+	}
+}
