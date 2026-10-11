@@ -1,6 +1,6 @@
 import Details from './details.js';
 import Task from './task.js';
-import { formatBytes, visibleTasks } from './utils.js';
+import { formatBytes, reservedBy, visibleTasks } from './utils.js';
 
 export default {
   name: 'Node',
@@ -22,6 +22,7 @@ export default {
       
       <v-card-text class="mt-n2">
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium" :aria-label="'Role: ' + node.Spec.Role">{{ node.Spec.Role }}</v-chip>
+        <v-chip v-if="node.ManagerStatus?.Leader" color="primary" variant="flat" class="ma-1 pa-1" label size="x-medium" aria-label="Swarm leader">leader</v-chip>
         <v-chip color="primary" class="ma-1 pa-1" label size="x-medium" :aria-label="'Architecture: ' + node.Description.Platform?.Architecture">{{ node.Description.Platform?.Architecture }}</v-chip>
         <v-spacer />
 
@@ -78,17 +79,7 @@ export default {
   },
   computed: {
     combinedServiceStats() {
-      return (this.node.tasks || []).reduce((accumulator, task) => {
-        const service = task.service;
-        if (!service) return accumulator;
-        // A service created without a resources block has no Resources at all.
-        const resources = service.Spec.TaskTemplate.Resources;
-        accumulator.reservedCpu += resources?.Reservations?.NanoCPUs ?? 0;
-        accumulator.reservedMemory += resources?.Reservations?.MemoryBytes ?? 0;
-        accumulator.limitedCpu += resources?.Limits?.NanoCPUs ?? 0;
-        accumulator.limitedMemory += resources?.Limits?.MemoryBytes ?? 0;
-        return accumulator;
-      }, { reservedCpu: 0, reservedMemory: 0, limitedCpu: 0, limitedMemory: 0 });
+      return reservedBy(this.node.tasks);
     }
   },
   methods: {

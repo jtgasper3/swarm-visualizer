@@ -1,11 +1,12 @@
 import Details from './details.js';
-import { formatBytes } from './utils.js';
+import { now } from './state.js';
+import { accentStyle, formatBytes, formatDuration } from './utils.js';
 
 export default {
   name: 'Task',
   template: `
     <v-card
-      :style="task.service ? calcStyle(task.service.index) : {}"
+      :style="accent"
       flat
       rounded="lg"
       class="d-flex flex-column mb-2"
@@ -15,7 +16,10 @@ export default {
           <v-badge :color="taskStatus(task.Status.State)" dot inline floating :title="task.Status.State" :aria-label="'Task status: ' + task.Status.State"></v-badge>
           <span :title="task.service.Spec.Name">{{ task.service.Spec.Name }}</span>
         </v-card-title>
-        <v-card-subtitle class="pa-0"><v-chip color="primary" class="ml-1 pa-1" label size="x-medium" density="compact" slim>{{ mode }}</v-chip></v-card-subtitle>
+        <v-card-subtitle class="pa-0">
+          <v-chip color="primary" class="ml-1 pa-1" label size="x-medium" density="compact" slim>{{ mode }}</v-chip>
+          <span v-if="since" class="ml-1" :title="'Since ' + sinceExact">{{ task.Status.State }} for {{ since }}</span>
+        </v-card-subtitle>
       </v-card-item>
 
       <v-card-text v-if="task.service" class="mt-n2 pa-1 pb-0">
@@ -67,10 +71,10 @@ export default {
 
               <v-list-subheader class="pa-0" style="min-height: 12px">Reservations and Limits</v-list-subheader>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources?.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources?.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
+                <template #title><span class="text-body-2">CPU Cores: {{ (task.Spec.Resources?.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.Spec.Resources?.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.Spec.TaskTemplate.Resources?.Reservations?.MemoryBytes) }} / {{ formatBytes(task.service.Spec.TaskTemplate.Resources?.Limits?.MemoryBytes) }}</span></template>
+                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.Spec.Resources?.Reservations?.MemoryBytes) }} / {{ formatBytes(task.Spec.Resources?.Limits?.MemoryBytes) }}</span></template>
               </v-list-item>
             </div>
           </v-expand-transition>
@@ -105,10 +109,25 @@ export default {
     service: Object,
   },
   computed: {
-    // The image without its digest. A service that does not run a container
+    // The image this task runs, without its digest, and so not necessarily the
+    // one its service names now: while an update rolls out, the tasks not yet
+    // replaced are still on the old one. A task that does not run a container
     // (the plugin runtime) has no ContainerSpec and so no image.
     image() {
-      return this.service?.Spec.TaskTemplate.ContainerSpec?.Image?.split('@')[0] ?? '';
+      return this.task.Spec?.ContainerSpec?.Image?.split('@')[0] ?? '';
+    },
+    // The border that marks this task as its service's.
+    accent() {
+      return this.task.service?.accent === undefined ? {} : accentStyle(this.task.service.accent);
+    },
+    // How long the task has been in its present state.
+    since() {
+      // A redacted timestamp arrives as the year 1, not as nothing.
+      const entered = Date.parse(this.task.Status?.Timestamp);
+      return entered > 0 ? formatDuration(now.value - entered) : '';
+    },
+    sinceExact() {
+      return new Date(this.task.Status.Timestamp).toLocaleString();
     },
     mode() {
       if (!this.service) return 'unknown';
@@ -137,18 +156,5 @@ export default {
         default: return 'error';
       }
     },
-    calcStyle(index) {
-      // https://htmlcolorcodes.com/color-chart/
-      const taskColors = [ '#039be5', '#3949ab', '#FF80F2', '#e53935', '#fb8c00', '#8e24aa', '#fdd835', '#80FF8D', '#00897b', '#00acc1', '#6d4c41', '#80B3FF', '#CC80FF', '#7cb342',];
-      const borderStyles = ['solid', 'dashed', 'dotted', 'groove', 'inset', 'double'];
-      
-      const style = borderStyles[Math.trunc(index / taskColors.length) % borderStyles.length];
-
-      return {
-        'border-color': taskColors[index % taskColors.length],
-        'border-style': style,
-        'border-width': '3px'
-      }
-    }
   }
 }
