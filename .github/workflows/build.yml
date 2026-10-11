@@ -97,7 +97,8 @@ jobs:
     # the workflow is started by hand. Building both architectures for every
     # push to every branch used more Actions minutes than there are. A branch
     # that needs an image gets one, tagged with its name, by starting the
-    # workflow on it.
+    # workflow on it. To find out before merging whether the image still
+    # builds, "docker build ." on the branch is enough; see the README.
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
 

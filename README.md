@@ -248,6 +248,32 @@ CI also checks formatting and runs `golangci-lint`, which you can run the same w
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run
 ```
 
+### The image
+
+CI builds and publishes the image for `main` and for release tags, not for other branches. Before merging a change that could affect the build, such as one to the Dockerfile, the Go version or a dependency, build it yourself:
+
+```sh
+docker build -t swarm-visualizer:dev .
+```
+
+CI builds for two architectures. The one you are not on can be built by naming it; nothing is emulated, because the Go compiler cross-compiles:
+
+```sh
+docker build --platform linux/amd64 -t swarm-visualizer:dev-amd64 .
+```
+
+To try what was built, on a swarm manager:
+
+```sh
+docker run --rm -p 8080:8080 -v /var/run/docker.sock:/var/run/docker.sock swarm-visualizer:dev
+```
+
+A local build does not try the workflow itself. For a change under `.github/workflows`, or to have a branch's image published under the branch's name, start the workflow on the branch:
+
+```sh
+gh workflow run "Image Build" --ref my-branch
+```
+
 ### Spin up some test stacks and individual services
 
 ```
