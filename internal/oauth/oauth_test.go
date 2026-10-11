@@ -350,7 +350,7 @@ func TestRegisterOAuthHandlersUsesDiscoveredEndpoints(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	auth := RegisterOAuthHandlers(mux, cfg)
+	auth := RegisterOAuthHandlers(t.Context(), mux, cfg)
 	if auth == nil {
 		t.Fatal("expected an Authenticator when auth is enabled")
 	}

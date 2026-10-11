@@ -76,8 +76,9 @@ func main() {
 }
 
 // newHandler assembles everything the server answers: the frontend, sign-in,
-// the WebSocket that carries the snapshots, and the health check. It starts
-// polling the swarm, which stops when ctx ends.
+// the WebSocket that carries the snapshots, and the health check. What it
+// starts in the background, polling the swarm and keeping sign-in's keys
+// fresh, stops when ctx ends; the Hub it returns has to be closed as well.
 func newHandler(ctx context.Context, cfg *config.Config) (http.Handler, *docker.Hub) {
 	mux := http.NewServeMux()
 
@@ -85,7 +86,7 @@ func newHandler(ctx context.Context, cfg *config.Config) (http.Handler, *docker.
 
 	// Register auth first so its token validator can be handed to the WebSocket
 	// handler. auth is nil when authentication is disabled.
-	auth := oauth.RegisterOAuthHandlers(mux, cfg)
+	auth := oauth.RegisterOAuthHandlers(ctx, mux, cfg)
 	var validate docker.TokenValidator
 	if auth != nil {
 		validate = auth.ValidateToken

@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -201,13 +202,18 @@ func (ks *keyStore) refresh() error {
 	return nil
 }
 
-// refreshLoop periodically refreshes the JWKS for the life of the process.
-func (ks *keyStore) refreshLoop() {
+// refreshLoop periodically refreshes the JWKS until ctx ends.
+func (ks *keyStore) refreshLoop(ctx context.Context) {
 	ticker := time.NewTicker(jwksRefreshInterval)
 	defer ticker.Stop()
-	for range ticker.C {
-		if err := ks.refresh(); err != nil {
-			log.Printf("JWKS periodic refresh failed: %v", err)
+	for {
+		select {
+		case <-ticker.C:
+			if err := ks.refresh(); err != nil {
+				log.Printf("JWKS periodic refresh failed: %v", err)
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }
