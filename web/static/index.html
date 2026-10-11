@@ -186,7 +186,7 @@
         <v-app-bar-title>
           <WebSocket @update="updateReceivedData" @not-authorized="getAuthorized()" @state-change="wsState = $event">
             <template #icon="{ state }">
-              <v-badge :color="state === 'connected' ? 'success' : state === 'connecting' ? 'warning' : 'error'" dot inline floating :title="state" :aria-label="'Connection: ' + state"></v-badge>
+              <v-badge :color="connectionColor(state)" dot inline floating :title="connectionLabel(state)" :aria-label="'Connection: ' + connectionLabel(state)"></v-badge>
             </template>
           </WebSocket>
           {{ clusterName }}
@@ -328,6 +328,12 @@
       <v-snackbar :model-value="wsState === 'reconnecting'" color="error" location="top" :timeout="-1">
         Connection lost — reconnecting...
       </v-snackbar>
+      <!-- The connection is fine but the server has lost touch with the swarm.
+           Nothing would otherwise change on screen, so say so. -->
+      <v-snackbar :model-value="stale && wsState === 'connected'" color="warning" location="top" :timeout="-1">
+        The server cannot read the swarm. This view is from {{ staleSince }}.
+      </v-snackbar>
+
 
       <v-main aria-label="Nodes and Services List">
         <v-container fluid>
@@ -393,6 +399,20 @@
       setup() {
         const clusterName = shallowRef('');
         const authEnabled = shallowRef(false);
+        // Set by the server while it cannot read the swarm; lastUpdated is
+        // then when what is on screen was last known to be true.
+        const stale = shallowRef(false);
+        const lastUpdated = shallowRef(null);
+        const staleSince = computed(() => lastUpdated.value ? new Date(lastUpdated.value).toLocaleString() : 'earlier');
+
+        function connectionColor(state) {
+          if (state !== 'connected') return state === 'connecting' ? 'warning' : 'error';
+          return stale.value ? 'warning' : 'success';
+        }
+
+        function connectionLabel(state) {
+          return state === 'connected' && stale.value ? 'connected, data out of date' : state;
+        }
         const drawer = useStorage('drawer', true);
         const wsState = shallowRef('connecting');
         const filters = useStorage('filters.5', {
@@ -666,6 +686,9 @@
           if (!data) return;
           clusterName.value = data.clusterName;
           authEnabled.value = data.authEnabled;
+          stale.value = !!data.stale;
+          lastUpdated.value = data.lastUpdated ?? null;
+
 
           networks.value = data.networks;
 
@@ -753,7 +776,12 @@
         return {
           clusterName,
           authEnabled,
+          stale,
+          staleSince,
+          connectionColor,
+          connectionLabel,
           drawer,
+
           wsState,
           vuetifyDefaults,
           filters,
