@@ -1,36 +1,81 @@
+# A deployment that follows "Security Considerations" in the README: the
+# visualizer never sees the Docker socket. It reads the swarm through a proxy
+# that answers its questions about nodes, services, tasks and networks and
+# refuses anything that would change the swarm, and it runs as an unprivileged
+# user on a read-only filesystem.
+#
+#   docker stack deploy -c deployment/docker-stack.yml visualizer
+#
+# For local development use the docker-compose.yml at the top of the repository.
+
 services:
-  swarm-visualizer:
-    image: jtgasper3/swarm-visualizer:latest
+  dockerproxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    environment:
+      # What the visualizer reads, on top of the ping, version and events the
+      # proxy answers by default. Containers, secrets, configs and the rest
+      # stay denied, and so does every write (POST, PUT, DELETE).
+      NODES: 1
+      SERVICES: 1
+      TASKS: 1
+      NETWORKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
     deploy:
       placement:
         constraints:
+          # Only a manager can answer questions about the swarm.
           - node.role == manager
-    env_file: "../dev.env"
+
+  visualizer:
+    image: jtgasper3/swarm-visualizer:latest
+    # The image runs as root so that it can read a directly mounted socket.
+    # Behind the proxy it needs no privileges at all.
+    user: "65534:65534"
+    read_only: true
     environment:
-      - CLUSTER_NAME=Local Swarm
-      # - ENABLE_AUTHN=true
-      # - ENABLE_AUTHZ=true
-      # Other OIDC (sensitive) variables are set in the .gitignore'd env file
-      - OIDC_CLIENT_SECRET_FILE=/run/secrets/client_secret
-      - OIDC_REDIRECT_URL=http://localhost:8080/callback
-      - OIDC_SCOPES=openid,profile
-      # - CONTEXT_ROOT=/testing
-      # - HIDE_ALL_CONFIGS=true
-      # - HIDE_ALL_ENVS=true
-      # - HIDE_ALL_MOUNTS=true
-      # - HIDE_ALL_SECRETS=true
-      - SENSITIVE_DATA_PATHS=services.*.Spec.TaskTemplate.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source',tasks.*.Spec.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source'
+      CLUSTER_NAME: My Swarm
+      DOCKER_HOST: tcp://dockerproxy:2375
+
+      # Hide what the people looking at the dashboard do not need to see. See
+      # "Data Sanitization" in the README for finer control.
+      # HIDE_ALL_ENVS: "true"
+      # HIDE_ALL_MOUNTS: "true"
+      # HIDE_ALL_CONFIGS: "true"
+      # HIDE_ALL_SECRETS: "true"
+
+      # Sign-in through an OpenID Connect provider. This says who somebody is,
+      # not whether they may look: restrict that at the provider. Uncomment the
+      # two secrets blocks below as well.
+      # ENABLE_AUTHN: "true"
+      # OIDC_CLIENT_ID: swarm-visualizer
+      # OIDC_CLIENT_SECRET_FILE: /run/secrets/visualizer_client_secret
+      # OIDC_REDIRECT_URL: https://swarm.example.com/callback
+      # OIDC_WELL_KNOWN_URL: https://auth.example.com/.well-known/openid-configuration
+
+      # Behind a reverse proxy: the path it serves the dashboard under, and the
+      # addresses it connects from.
+      # CONTEXT_ROOT: /visualizer/
+      # TRUSTED_PROXIES: 10.0.0.0/8
     ports:
       - "8080:8080"
-    restart: always
-    secrets:
-      - client_secret
-    volumes:
-      # Direct socket mount is root-equivalent host access. For production, front
-      # it with a read-only socket proxy instead — see "Security Considerations"
-      # in the README.
-      - /var/run/docker.sock:/var/run/docker.sock
-    
-secrets:
-  client_secret:
-    file: ../client_secret.txt
+    networks:
+      - docker-api
+    # secrets:
+    #   - visualizer_client_secret
+    deploy:
+      update_config:
+        # Start the replacement before stopping what it replaces.
+        order: start-first
+
+networks:
+  # Carries the Docker API, read-only as it is. Attach nothing else to it.
+  docker-api:
+    driver: overlay
+
+# Created beforehand, with: docker secret create visualizer_client_secret <file>
+# secrets:
+#   visualizer_client_secret:
+#     external: true
