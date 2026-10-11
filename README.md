@@ -238,7 +238,7 @@ go test ./...
 node --test web/test/*.test.mjs
 ```
 
-`go test` covers the server, and in `cmd/server` the dashboard itself: those tests run the whole server against a swarm described by the files in `cmd/server/testdata`, open the page in headless Chrome or Chromium, and check what it shows. They are skipped when no browser is installed (`CHROME_BIN` names one that is somewhere unusual) and with `-short`. To reproduce something seen on a real swarm, save what its daemon answers for `/nodes`, `/services`, `/tasks` and `/networks` into a new directory under `testdata` and point a test at it.
+`go test` covers the server, and in `cmd/server` the dashboard itself: those tests run the whole server against a swarm described by the files in `cmd/server/testdata`, open the page in headless Chrome or Chromium, and check what it shows. They also follow a link through sign-in against a stand-in identity provider, run the dashboard under a context root, and cut the connection to see the page recover. They are skipped when no browser is installed (`CHROME_BIN` names one that is somewhere unusual) and with `-short`. To reproduce something seen on a real swarm, save what its daemon answers for `/nodes`, `/services`, `/tasks` and `/networks` into a new directory under `testdata` and point a test at it.
 
 The second command tests the frontend's helper functions and needs Node 22.7 or later, nothing else.
 

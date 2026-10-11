@@ -15,10 +15,14 @@ import (
 
 // TestNewHandler_StopsWhatItStarted verifies that once main's shutdown steps
 // have run, the goroutines the server started are gone: the one that polls the
-// swarm, and the one that hands each snapshot to the connected clients. The
-// second used to run for as long as the process did.
+// swarm, the one that hands each snapshot to the connected clients, and, with
+// sign-in on, the two that keep the provider's keys fresh and the rate
+// limiters tidy. All but the first used to run for as long as the process did.
 func TestNewHandler_StopsWhatItStarted(t *testing.T) {
-	running := func() (found []string) {
+	always := []string{"docker.(*inspector).run(", "docker.(*Hub).runBroadcasts("}
+	signIn := []string{"oauth.(*keyStore).refreshLoop(", "oauth.(*Authenticator).cleanupLimiters("}
+
+	running := func(names []string) (found []string) {
 		stacks := make([]byte, 1<<16)
 		for {
 			if n := runtime.Stack(stacks, true); n < len(stacks) {
@@ -27,7 +31,7 @@ func TestNewHandler_StopsWhatItStarted(t *testing.T) {
 			}
 			stacks = make([]byte, 2*len(stacks))
 		}
-		for _, name := range []string{"docker.(*inspector).run(", "docker.(*Hub).runBroadcasts("} {
+		for _, name := range names {
 			if bytes.Contains(stacks, []byte(name)) {
 				found = append(found, name)
 			}
@@ -43,25 +47,39 @@ func TestNewHandler_StopsWhatItStarted(t *testing.T) {
 		return done()
 	}
 
-	url, stop := startDashboard(t, filepath.Join("testdata", "empty"))
-	ready := func() bool {
-		resp, err := http.Get(url + "/healthz")
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
+	tests := []struct {
+		name  string
+		start func(t *testing.T) *dashboard
+		want  []string
+	}{
+		{"without sign-in", func(t *testing.T) *dashboard { return startDashboard(t, "empty") }, always},
+		{"with sign-in", func(t *testing.T) *dashboard {
+			return startDashboard(t, "empty", signedIn(t, startIdentityProvider(t, "a-secret")))
+		}, append(always, signIn...)},
 	}
-	if !within(5*time.Second, ready) {
-		t.Fatal("the server did not become ready")
-	}
-	if got := running(); len(got) != 2 {
-		t.Fatalf("found %q running before the shutdown, want both; have they been renamed?", got)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := tc.start(t)
+			ready := func() bool {
+				resp, err := http.Get(server.URL + "/healthz")
+				if err != nil {
+					return false
+				}
+				defer resp.Body.Close()
+				return resp.StatusCode == http.StatusOK
+			}
+			if !within(5*time.Second, ready) {
+				t.Fatal("the server did not become ready")
+			}
+			if got := running(tc.want); len(got) != len(tc.want) {
+				t.Fatalf("found %q running before the shutdown, want %q; has one been renamed?", got, tc.want)
+			}
 
-	stop()
-	if !within(2*time.Second, func() bool { return len(running()) == 0 }) {
-		t.Errorf("still running after the shutdown: %q", running())
+			server.Stop()
+			if !within(2*time.Second, func() bool { return len(running(tc.want)) == 0 }) {
+				t.Errorf("still running after the shutdown: %q", running(tc.want))
+			}
+		})
 	}
 }
 

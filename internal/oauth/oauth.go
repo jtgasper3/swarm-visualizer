@@ -43,7 +43,8 @@ type ipLimiter struct {
 }
 
 // NewAuthenticator discovers the OIDC endpoints and JWKS, then builds the
-// oauth2 config. It performs network I/O.
+// oauth2 config. It performs network I/O. It starts nothing that keeps
+// running; RegisterOAuthHandlers does that.
 func NewAuthenticator(cfg *config.Config) (*Authenticator, error) {
 	if err := checkConfig(&cfg.OAuthConfig); err != nil {
 		return nil, err
@@ -174,10 +175,17 @@ func (a *Authenticator) authLimiter(ip string) *rate.Limiter {
 	return l.limiter
 }
 
-// cleanupLimiters removes entries not seen in the last 10 minutes.
-func (a *Authenticator) cleanupLimiters() {
+// cleanupLimiters removes entries not seen in the last 10 minutes, every five
+// minutes until ctx ends.
+func (a *Authenticator) cleanupLimiters(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
 	for {
-		time.Sleep(5 * time.Minute)
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return
+		}
 		a.limitersMu.Lock()
 		for ip, l := range a.limiters {
 			if time.Since(l.lastSeen) > 10*time.Minute {
@@ -191,7 +199,9 @@ func (a *Authenticator) cleanupLimiters() {
 // RegisterOAuthHandlers builds the Authenticator and wires its endpoints onto
 // mux when authentication is enabled. It returns the Authenticator (whose
 // ValidateToken the WebSocket handler uses), or nil when auth is disabled.
-func RegisterOAuthHandlers(mux *http.ServeMux, cfg *config.Config) *Authenticator {
+// What it leaves running, the refreshing of the provider's signing keys and
+// the tidying of the rate limiters, stops when ctx ends.
+func RegisterOAuthHandlers(ctx context.Context, mux *http.ServeMux, cfg *config.Config) *Authenticator {
 	if !cfg.AuthEnabled {
 		return nil
 	}
@@ -200,7 +210,8 @@ func RegisterOAuthHandlers(mux *http.ServeMux, cfg *config.Config) *Authenticato
 	if err != nil {
 		log.Fatalf("Failed to initialize authentication: %v", err)
 	}
-	go auth.cleanupLimiters()
+	go auth.keys.refreshLoop(ctx)
+	go auth.cleanupLimiters(ctx)
 	auth.register(mux)
 	return auth
 }
@@ -399,12 +410,7 @@ func (a *Authenticator) fetchWellKnownOIDCConfig() error {
 	}
 
 	a.keys = newKeyStore(discovery.JWKSURI, httpClient)
-	if err := a.keys.refresh(); err != nil {
-		return err
-	}
-	go a.keys.refreshLoop()
-
-	return nil
+	return a.keys.refresh()
 }
 
 // handleLogout clears the session cookie and returns the user to the app,
