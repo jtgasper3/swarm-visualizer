@@ -33,7 +33,7 @@ func main() {
 		validate = auth.ValidateToken
 	}
 
-	hub := docker.RegisterDockerHandlers(mux, cfg, validate)
+	hub := docker.RegisterDockerHandlers(context.Background(), mux, cfg, validate)
 
 	// Unauthenticated readiness endpoint at a fixed path (independent of
 	// CONTEXT_ROOT) for orchestrator health checks.

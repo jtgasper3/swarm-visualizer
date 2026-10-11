@@ -98,6 +98,10 @@ environment:
   TRUSTED_PROXIES: 10.0.0.0/8
 ```
 
+## Health and stale data
+
+`/healthz` answers 200 once the server has read the swarm for the first time, and keeps doing so afterwards: the container is not reported unhealthy, and so not restarted, because the Docker API went away for a while. What tells you about that is the dashboard itself. When the server has been unable to read the swarm for more than about fifteen seconds, the page says so and shows when its data dates from, and the connection indicator turns amber. The server logs the first failure, a reminder every thirty seconds, and the recovery.
+
 ## Data Sanitization
 
 The Docker API can expose potentially sensitive information. There are several methods to sanitize data from the payload that can be tailored to your needs:

@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -140,5 +141,51 @@ func TestWS_OversizedMessageIsRefused(t *testing.T) {
 	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	if _, _, err := conn.ReadMessage(); err == nil {
 		t.Error("expected the connection to be closed after an oversized message")
+	}
+}
+
+// TestWS_CloseTellsClientsTheServerIsGoingAway verifies the shutdown path: each
+// client gets a close frame instead of a dropped connection, and nobody new is
+// let in.
+func TestWS_CloseTellsClientsTheServerIsGoingAway(t *testing.T) {
+	h := newHub(&config.Config{ContextRoot: "/"}, nil)
+	_, wsURL := wsServer(t, h)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	if !waitFor(t, func() bool { return clientCount(h) == 1 }, 2*time.Second) {
+		t.Fatal("client was not registered")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	h.Close(ctx)
+	if ctx.Err() != nil {
+		t.Fatal("Close did not finish writing the closing frames in time")
+	}
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err = conn.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.CloseGoingAway) {
+		t.Errorf("read after Close: %v, want a close with code %d", err, websocket.CloseGoingAway)
+	}
+	if c := clientCount(h); c != 0 {
+		t.Errorf("clients after Close = %d, want 0", c)
+	}
+
+	// A connection attempted after Close is turned away.
+	late, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err == nil {
+		defer late.Close()
+		late.SetReadDeadline(time.Now().Add(2 * time.Second))
+		if _, _, err := late.ReadMessage(); err == nil {
+			t.Error("a client connecting after Close was served")
+		}
+	}
+	if c := clientCount(h); c != 0 {
+		t.Errorf("clients after a late connection = %d, want 0", c)
 	}
 }
