@@ -65,6 +65,9 @@ type Hub struct {
 
 	// closed is set by Close; no client is registered after it.
 	closed bool
+	// done is closed by Close. It stops runBroadcasts, and lets a Publish with
+	// nobody left to hand its frame to give up.
+	done chan struct{}
 	// writers counts the running writePump goroutines, so that Close can wait
 	// for their closing frames to go out.
 	writers sync.WaitGroup
@@ -86,6 +89,7 @@ func newHub(cfg *config.Config, validate TokenValidator) *Hub {
 		maxClients: cfg.MaxWSConnections,
 		broadcast:  make(chan []byte, 1),
 		arrivals:   make(chan struct{}, 1),
+		done:       make(chan struct{}),
 	}
 }
 
@@ -96,13 +100,16 @@ func (h *Hub) Idle() bool {
 	return len(h.clients) == 0
 }
 
-// Close disconnects every client with a "going away" close and refuses new
-// ones. It returns once the closing frames have been written or ctx ends.
-// Without it a shutdown simply drops the connections, which a browser reports
-// as an abnormal closure.
+// Close disconnects every client with a "going away" close, refuses new ones,
+// and stops the fan-out. It returns once the closing frames have been written
+// or ctx ends. Without it a shutdown simply drops the connections, which a
+// browser reports as an abnormal closure. Closing a hub twice is harmless.
 func (h *Hub) Close(ctx context.Context) {
 	h.mu.Lock()
-	h.closed = true
+	if !h.closed {
+		h.closed = true
+		close(h.done)
+	}
 	for c := range h.clients {
 		delete(h.clients, c)
 		c.closeCode = websocket.CloseGoingAway
@@ -130,9 +137,14 @@ func (h *Hub) Ready() bool {
 	return h.lastFanned != nil
 }
 
-// Publish hands a marshalled snapshot to the fan-out goroutine.
+// Publish hands a marshalled snapshot to the fan-out goroutine. Once the hub is
+// closed there is nobody to hand it to, and the frame is dropped: waiting
+// would hold the caller for good.
 func (h *Hub) Publish(frame []byte) {
-	h.broadcast <- frame
+	select {
+	case h.broadcast <- frame:
+	case <-h.done:
+	}
 }
 
 // Keepalive timings: a ping is sent every pingPeriod(), and the read side must
@@ -167,7 +179,8 @@ type wsClient struct {
 }
 
 // RegisterDockerHandlers starts polling the swarm and serves the snapshots over
-// a WebSocket. The polling stops when ctx ends.
+// a WebSocket. The polling stops when ctx ends, and the rest when the Hub it
+// returns is closed.
 func RegisterDockerHandlers(ctx context.Context, mux *http.ServeMux, cfg *config.Config, validate TokenValidator) *Hub {
 	hub := newHub(cfg, validate)
 
@@ -349,17 +362,24 @@ func (h *Hub) unregister(c *wsClient) {
 	h.mu.Unlock()
 }
 
-// runBroadcasts fans out each published frame to all connected clients.
+// runBroadcasts fans out each published frame to all connected clients, until
+// the hub is closed.
 func (h *Hub) runBroadcasts() {
-	for msg := range h.broadcast {
-		h.mu.Lock()
-		// Record the frame being fanned out so a client registering concurrently
-		// is seeded with this frame (or a newer one), never a stale one.
-		h.lastFanned = msg
-		for c := range h.clients {
-			enqueue(c, msg)
+	for {
+		select {
+		case msg := <-h.broadcast:
+			h.mu.Lock()
+			// Record the frame being fanned out so a client registering
+			// concurrently is seeded with this frame (or a newer one), never a
+			// stale one.
+			h.lastFanned = msg
+			for c := range h.clients {
+				enqueue(c, msg)
+			}
+			h.mu.Unlock()
+		case <-h.done:
+			return
 		}
-		h.mu.Unlock()
 	}
 }
 

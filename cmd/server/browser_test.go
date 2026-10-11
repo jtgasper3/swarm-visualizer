@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -64,8 +65,9 @@ func fakeDocker(t *testing.T, dir string) *httptest.Server {
 }
 
 // startDashboard runs the whole server against the swarm described in dir and
-// returns its address.
-func startDashboard(t *testing.T, dir string) string {
+// returns its address, and a function that shuts it down the way main does.
+// The server is shut down when the test ends in any case.
+func startDashboard(t *testing.T, dir string) (url string, stop func()) {
 	t.Helper()
 
 	// Whatever the developer's shell has set must not reach the server. This
@@ -86,14 +88,15 @@ func startDashboard(t *testing.T, dir string) string {
 	ctx, cancel := context.WithCancel(context.Background())
 	handler, hub := newHandler(ctx, config.LoadConfig())
 	srv := httptest.NewServer(handler)
-	t.Cleanup(func() {
+	stop = sync.OnceFunc(func() {
 		cancel()
 		closing, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
 		hub.Close(closing)
 		srv.Close()
 	})
-	return srv.URL
+	t.Cleanup(stop)
+	return srv.URL, stop
 }
 
 // openDashboard starts a browser and a server for the swarm in
@@ -105,7 +108,8 @@ func openDashboard(t *testing.T, fixture string, cards int) *page {
 	}
 
 	p := startBrowser(t)
-	p.open(t, startDashboard(t, filepath.Join("testdata", fixture))+"/")
+	url, _ := startDashboard(t, filepath.Join("testdata", fixture))
+	p.open(t, url+"/")
 	p.waitFor(t, fmt.Sprintf(`document.querySelectorAll('.server-card').length === %d`, cards))
 	return p
 }

@@ -27,6 +27,13 @@ func wsServer(t *testing.T, h *Hub) (*httptest.Server, string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(h.handleConnections))
 	t.Cleanup(srv.Close)
+	// Registered second, so it runs first: the hub lets go of its clients and
+	// stops its fan-out, where the test started one.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		h.Close(ctx)
+	})
 	return srv, "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
 }
 
