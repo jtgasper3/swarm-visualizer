@@ -273,9 +273,6 @@ func TestInspector_ReadsServicesOnlyForNewTasks(t *testing.T) {
 }
 
 func TestInspector_UnchangedSwarmIsPublishedOnce(t *testing.T) {
-	stoppedTaskCache = make(map[string]cachedTask)
-	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
-
 	src := &fakeSource{services: []swarm.Service{testService("s1", "", "A=1")}}
 	for _, id := range []string{"f", "b", "e", "a", "d", "c"} {
 		failed := testTask(id, "s1", "A=1")

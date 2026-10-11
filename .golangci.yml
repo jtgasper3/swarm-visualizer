@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  exclusions:
+    presets:
+      # An unchecked Close, and the like.
+      - std-error-handling
+  settings:
+    errcheck:
+      exclude-functions:
+        # These fail only on a connection that has already failed, which the
+        # read or write that follows reports.
+        - (*github.com/gorilla/websocket.Conn).SetReadDeadline
+        - (*github.com/gorilla/websocket.Conn).SetWriteDeadline

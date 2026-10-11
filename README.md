@@ -15,20 +15,21 @@ Its goals are:
 ### Docker CLI
 
 ```sh
-docker service create visualizer \
-    -e CLUSTER_NAME="Dev Cluster" \
-    -p 8080:8080 \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    --constraint node.role==manager
+docker service create \
+    --name visualizer \
+    --env CLUSTER_NAME="Dev Cluster" \
+    --publish 8080:8080 \
+    --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+    --constraint node.role==manager \
     jtgasper3/swarm-visualizer
 ```
 
-### Docker Compose
+### Docker Stack
 
-See `deployment/` for a fuller example.
+Save as `docker-stack.yml` and deploy with `docker stack deploy -c docker-stack.yml visualizer`:
 
 ```yaml
-service:
+services:
   viz:
     image: jtgasper3/swarm-visualizer:latest
     deploy:
@@ -43,7 +44,7 @@ service:
       - /var/run/docker.sock:/var/run/docker.sock
 ```
 
-> The examples above mount the Docker socket directly for simplicity. The socket is root-equivalent on the host and grants full control of the swarm — see [Security Considerations](#security-considerations) for a hardened, read-only setup before exposing this app.
+> The examples above mount the Docker socket directly for simplicity. The socket is root-equivalent on the host and grants full control of the swarm — see [Security Considerations](#security-considerations) before exposing this app. [`deployment/docker-stack.yml`](deployment/docker-stack.yml) is the hardened setup described there, ready to deploy: a read-only socket proxy, an unprivileged user, and the sign-in settings to fill in.
 
 ## Configuration
 
@@ -108,8 +109,8 @@ environment:
 The Docker API can expose potentially sensitive information. There are several methods to sanitize data from the payload that can be tailored to your needs:
 
 - Using the environment variables of `HIDE_ALL_CONFIGS`, `HIDE_ALL_ENVS`, `HIDE_ALL_MOUNTS`, and `HIDE_ALL_SECRETS` with the value of `true` will cause the application to strip the respective values from the output sent to the browser.
-- The environment variable `HIDE_LABELS` can be used to strip the output of various labels using a comma separated list of `container`, `network`, `node`, `service`. The value of `all` can also be used instead of specified all of the values.
-- To manage things on a service by service level, use labels on the desired service (with `io.github.jtgasper3.visualizer.hide-labels`) and environment variables (`io.github.jtgasper3.visualizer.hide-envs`) to specify a comma separated list of label or environment variables to remove from the service's specific labels or environment variable values from the output. The value is changes to "(sanitized)". Both labels cover the service's tasks as well as the service itself.
+- The environment variable `HIDE_LABELS` can be used to strip the output of various labels using a comma separated list of `container`, `network`, `node`, `service`. The value of `all` can also be used instead of specifying all of the values.
+- To manage things on a service by service level, use labels on the desired service (with `io.github.jtgasper3.visualizer.hide-labels`) and environment variables (`io.github.jtgasper3.visualizer.hide-envs`) to specify a comma separated list of label or environment variables to remove from the service's specific labels or environment variable values from the output. The value is changed to "(sanitized)". Both labels cover the service's tasks as well as the service itself.
 - A service's `PreviousSpec` (the copy of its spec from before the last update, which Swarm keeps for rollbacks) is never sent to the browser.
 
 For very granular control over uses that we didn't consider, use the environment variable of `SENSITIVE_DATA_PATHS` and a comma separated list of paths to remove. Examine the JSON output and find and specify the path to remove. Use `*` for arrays, and use single quotes to delimit values of property names that have embedded periods (i.e. `services.*.Spec.TaskTemplate.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source'`).
@@ -229,6 +230,49 @@ docker compose up --watch
 ### Frontend libraries
 
 Vue, Vuetify, VueUse, the Material Design icon font and Roboto are kept in `web/static/vendor` and compiled into the server with the rest of the frontend; nothing is loaded from a CDN. `web/vendor.sh` names the versions and downloads them, and `web/vendor.sha256` records what it fetched. To update one, change its version in the script, run it, and review the diff. A test fails if the files and the checksums disagree, or if the page refers to anything outside the server.
+
+### Tests
+
+```sh
+go test ./...
+node --test web/test/*.test.mjs
+```
+
+`go test` covers the server, and in `cmd/server` the dashboard itself: those tests run the whole server against a swarm described by the files in `cmd/server/testdata`, open the page in headless Chrome or Chromium, and check what it shows. They are skipped when no browser is installed (`CHROME_BIN` names one that is somewhere unusual) and with `-short`. To reproduce something seen on a real swarm, save what its daemon answers for `/nodes`, `/services`, `/tasks` and `/networks` into a new directory under `testdata` and point a test at it.
+
+The second command tests the frontend's helper functions and needs Node 22.7 or later, nothing else.
+
+CI also checks formatting and runs `golangci-lint`, which you can run the same way without installing it:
+
+```sh
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run
+```
+
+### The image
+
+CI builds and publishes the image for `main` and for release tags, not for other branches. Before merging a change that could affect the build, such as one to the Dockerfile, the Go version or a dependency, build it yourself:
+
+```sh
+docker build -t swarm-visualizer:dev .
+```
+
+CI builds for two architectures. The one you are not on can be built by naming it; nothing is emulated, because the Go compiler cross-compiles:
+
+```sh
+docker build --platform linux/amd64 -t swarm-visualizer:dev-amd64 .
+```
+
+To try what was built, on a swarm manager:
+
+```sh
+docker run --rm -p 8080:8080 -v /var/run/docker.sock:/var/run/docker.sock swarm-visualizer:dev
+```
+
+A local build does not try the workflow itself. For a change under `.github/workflows`, or to have a branch's image published under the branch's name, start the workflow on the branch:
+
+```sh
+gh workflow run "Image Build" --ref my-branch
+```
 
 ### Spin up some test stacks and individual services
 

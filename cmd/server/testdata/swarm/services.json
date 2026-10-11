@@ -1,0 +1,121 @@
+[
+  {
+    "ID": "svc-web",
+    "Version": { "Index": 310 },
+    "CreatedAt": "2026-01-12T10:00:00Z",
+    "UpdatedAt": "2026-03-01T09:00:00Z",
+    "Spec": {
+      "Name": "shop_web",
+      "Labels": { "com.docker.stack.namespace": "shop", "com.docker.stack.image": "registry.example.com/shop/web:2.0" },
+      "TaskTemplate": {
+        "ContainerSpec": {
+          "Image": "registry.example.com/shop/web:2.0@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "Labels": { "com.docker.stack.namespace": "shop" },
+          "Env": [ "MODE=production", "LISTEN=:8080" ],
+          "Isolation": "default"
+        },
+        "Resources": {
+          "Limits": { "NanoCPUs": 1000000000, "MemoryBytes": 536870912 },
+          "Reservations": { "NanoCPUs": 500000000, "MemoryBytes": 268435456 }
+        },
+        "RestartPolicy": { "Condition": "any", "MaxAttempts": 0 },
+        "Placement": { "Platforms": [ { "Architecture": "amd64", "OS": "linux" } ] },
+        "Networks": [ { "Target": "net-frontend", "Aliases": [ "web" ] } ],
+        "ForceUpdate": 0,
+        "Runtime": "container"
+      },
+      "Mode": { "Replicated": { "Replicas": 2 } },
+      "UpdateConfig": { "Parallelism": 1, "Delay": 10000000000, "FailureAction": "pause", "Order": "start-first" },
+      "EndpointSpec": { "Mode": "vip", "Ports": [ { "Protocol": "tcp", "TargetPort": 8080, "PublishedPort": 80, "PublishMode": "ingress" } ] }
+    },
+    "PreviousSpec": {
+      "Name": "shop_web",
+      "Labels": { "com.docker.stack.namespace": "shop" },
+      "TaskTemplate": {
+        "ContainerSpec": {
+          "Image": "registry.example.com/shop/web:1.9@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "Env": [ "MODE=production", "PREVIOUS_ONLY=must-not-reach-the-browser" ]
+        }
+      },
+      "Mode": { "Replicated": { "Replicas": 2 } }
+    },
+    "Endpoint": {
+      "Spec": { "Mode": "vip", "Ports": [ { "Protocol": "tcp", "TargetPort": 8080, "PublishedPort": 80, "PublishMode": "ingress" } ] },
+      "Ports": [ { "Protocol": "tcp", "TargetPort": 8080, "PublishedPort": 80, "PublishMode": "ingress" } ],
+      "VirtualIPs": [ { "NetworkID": "net-ingress", "Addr": "10.0.0.5/24" }, { "NetworkID": "net-frontend", "Addr": "10.0.1.5/24" } ]
+    },
+    "UpdateStatus": { "State": "updating", "StartedAt": "2026-03-01T09:00:00Z", "Message": "update in progress" }
+  },
+  {
+    "ID": "svc-api",
+    "Version": { "Index": 320 },
+    "CreatedAt": "2026-01-12T10:00:00Z",
+    "UpdatedAt": "2026-02-01T12:00:00Z",
+    "Spec": {
+      "Name": "shop_api",
+      "Labels": { "com.docker.stack.namespace": "shop" },
+      "TaskTemplate": {
+        "ContainerSpec": {
+          "Image": "registry.example.com/shop/api:1.4",
+          "Env": [ "DATABASE_URL=postgres://db.internal/shop" ]
+        },
+        "Placement": { "Constraints": [ "node.role == worker", "node.labels.zone == a" ] },
+        "Networks": [ { "Target": "net-host-not-in-the-list" }, { "Target": "net-frontend" } ],
+        "Runtime": "container"
+      },
+      "Mode": { "Replicated": { "Replicas": 1 } }
+    },
+    "Endpoint": { "Spec": {} }
+  },
+  {
+    "ID": "svc-agent",
+    "Version": { "Index": 330 },
+    "CreatedAt": "2026-01-11T09:00:00Z",
+    "UpdatedAt": "2026-01-11T09:00:00Z",
+    "Spec": {
+      "Name": "agent",
+      "Labels": {},
+      "TaskTemplate": {
+        "ContainerSpec": { "Image": "example/agent:3" },
+        "Resources": { "Limits": { "MemoryBytes": 67108864 } },
+        "Runtime": "container"
+      },
+      "Mode": { "Global": {} }
+    },
+    "Endpoint": { "Spec": {} }
+  },
+  {
+    "ID": "svc-worker",
+    "Version": { "Index": 340 },
+    "CreatedAt": "2026-03-01T09:10:00Z",
+    "UpdatedAt": "2026-03-01T09:10:00Z",
+    "Spec": {
+      "Name": "shop_worker",
+      "Labels": { "com.docker.stack.namespace": "shop" },
+      "TaskTemplate": {
+        "ContainerSpec": { "Image": "registry.example.com/shop/worker:0.7" },
+        "Resources": { "Reservations": { "MemoryBytes": 68719476736 } },
+        "Networks": [ { "Target": "net-frontend" } ],
+        "Runtime": "container"
+      },
+      "Mode": { "Replicated": { "Replicas": 1 } }
+    },
+    "Endpoint": { "Spec": {} }
+  },
+  {
+    "ID": "svc-plugin",
+    "Version": { "Index": 350 },
+    "CreatedAt": "2026-02-15T14:00:00Z",
+    "UpdatedAt": "2026-02-15T14:00:00Z",
+    "Spec": {
+      "Name": "logshipper",
+      "Labels": {},
+      "TaskTemplate": {
+        "PluginSpec": { "Name": "logshipper", "Remote": "example/logshipper-plugin:1" },
+        "Runtime": "plugin"
+      },
+      "Mode": { "Global": {} }
+    },
+    "Endpoint": { "Spec": {} }
+  }
+]

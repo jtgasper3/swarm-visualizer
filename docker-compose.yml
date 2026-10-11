@@ -20,7 +20,6 @@ services:
       # the binary, so edits show up on the next page load.
       - STATIC_DIR=/static
       # - ENABLE_AUTHN=true
-      # - ENABLE_AUTHZ=true
       # Other OIDC (sensitive) variables are set in the .gitignore'd env file
       - OIDC_CLIENT_SECRET_FILE=/run/secrets/client_secret
       - OIDC_REDIRECT_URL=http://localhost:8080/callback

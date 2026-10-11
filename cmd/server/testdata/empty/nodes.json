@@ -1,0 +1,17 @@
+[
+  {
+    "ID": "node-solo-01",
+    "Version": { "Index": 9 },
+    "CreatedAt": "2026-01-10T08:00:00Z",
+    "UpdatedAt": "2026-01-10T08:00:00Z",
+    "Spec": { "Labels": {}, "Role": "manager", "Availability": "active" },
+    "Description": {
+      "Hostname": "solo-01",
+      "Platform": { "Architecture": "aarch64", "OS": "linux" },
+      "Resources": { "NanoCPUs": 2000000000, "MemoryBytes": 4294967296 },
+      "Engine": { "EngineVersion": "29.8.0" }
+    },
+    "Status": { "State": "ready", "Addr": "192.168.65.3" },
+    "ManagerStatus": { "Leader": true, "Reachability": "reachable", "Addr": "192.168.65.3:2377" }
+  }
+]

@@ -20,7 +20,7 @@ func (a *Authenticator) ValidateToken(r *http.Request) (jwt.MapClaims, error) {
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		return a.validateRawToken(strings.TrimPrefix(authHeader, "Bearer "))
 	}
-	return nil, fmt.Errorf("Unauthorized: no session cookie or bearer token")
+	return nil, fmt.Errorf("unauthorized: no session cookie or bearer token")
 }
 
 // validateRawToken verifies an ID token's signature, expiry, issuer, and

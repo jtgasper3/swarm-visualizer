@@ -31,35 +31,18 @@ func main() {
 
 	cfg := config.LoadConfig()
 
-	contextRoot := cfg.ContextRoot
-	log.Printf("Server root context is %s", contextRoot)
+	log.Printf("Server root context is %s", cfg.ContextRoot)
 
 	// ctx ends on the first interrupt or termination signal, which stops the
 	// polling and starts the shutdown below.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	mux := http.NewServeMux()
-
-	mux.Handle(contextRoot, http.StripPrefix(contextRoot, staticHandler(cfg.StaticDir)))
-
-	// Register auth first so its token validator can be handed to the WebSocket
-	// handler. auth is nil when authentication is disabled.
-	auth := oauth.RegisterOAuthHandlers(mux, cfg)
-	var validate docker.TokenValidator
-	if auth != nil {
-		validate = auth.ValidateToken
-	}
-
-	hub := docker.RegisterDockerHandlers(ctx, mux, cfg, validate)
-
-	// Unauthenticated readiness endpoint at a fixed path (independent of
-	// CONTEXT_ROOT) for orchestrator health checks.
-	mux.Handle("/healthz", healthzHandler(hub.Ready))
+	handler, hub := newHandler(ctx, cfg)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.ListenerPort,
-		Handler:           securityHeaders(mux),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      90 * time.Second,
 		// Without this a keep-alive connection that has gone quiet is held
@@ -90,6 +73,31 @@ func main() {
 		log.Fatal("Server forced to shutdown: ", err)
 	}
 	log.Println("Server stopped")
+}
+
+// newHandler assembles everything the server answers: the frontend, sign-in,
+// the WebSocket that carries the snapshots, and the health check. It starts
+// polling the swarm, which stops when ctx ends.
+func newHandler(ctx context.Context, cfg *config.Config) (http.Handler, *docker.Hub) {
+	mux := http.NewServeMux()
+
+	mux.Handle(cfg.ContextRoot, http.StripPrefix(cfg.ContextRoot, staticHandler(cfg.StaticDir)))
+
+	// Register auth first so its token validator can be handed to the WebSocket
+	// handler. auth is nil when authentication is disabled.
+	auth := oauth.RegisterOAuthHandlers(mux, cfg)
+	var validate docker.TokenValidator
+	if auth != nil {
+		validate = auth.ValidateToken
+	}
+
+	hub := docker.RegisterDockerHandlers(ctx, mux, cfg, validate)
+
+	// Unauthenticated readiness endpoint at a fixed path (independent of
+	// CONTEXT_ROOT) for orchestrator health checks.
+	mux.Handle("/healthz", healthzHandler(hub.Ready))
+
+	return securityHeaders(mux), hub
 }
 
 // staticHandler serves the frontend: the copy built into the binary, or the

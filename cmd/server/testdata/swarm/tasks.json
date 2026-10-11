@@ -1,0 +1,176 @@
+[
+  {
+    "ID": "task-web-1",
+    "Version": { "Index": 401 },
+    "CreatedAt": "2026-03-01T09:00:05Z",
+    "UpdatedAt": "2026-03-01T09:00:20Z",
+    "Spec": {
+      "ContainerSpec": {
+        "Image": "registry.example.com/shop/web:2.0@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "Env": [ "MODE=production", "LISTEN=:8080" ]
+      },
+      "Resources": {
+        "Limits": { "NanoCPUs": 1000000000, "MemoryBytes": 536870912 },
+        "Reservations": { "NanoCPUs": 500000000, "MemoryBytes": 268435456 }
+      },
+      "Networks": [ { "Target": "net-frontend", "Aliases": [ "web" ] } ],
+      "Runtime": "container"
+    },
+    "ServiceID": "svc-web",
+    "Slot": 1,
+    "NodeID": "node-mgr-01",
+    "Status": {
+      "Timestamp": "2026-03-01T09:00:20Z",
+      "State": "running",
+      "Message": "started",
+      "ContainerStatus": { "ContainerID": "c0ffee0001", "PID": 4101 }
+    },
+    "DesiredState": "running",
+    "NetworksAttachments": [ { "Network": { "ID": "net-frontend", "Spec": { "Name": "shop_frontend" } }, "Addresses": [ "10.0.1.11/24" ] } ]
+  },
+  {
+    "ID": "task-web-2",
+    "Version": { "Index": 402 },
+    "CreatedAt": "2026-02-01T12:00:00Z",
+    "UpdatedAt": "2026-02-01T12:00:15Z",
+    "Spec": {
+      "ContainerSpec": {
+        "Image": "registry.example.com/shop/web:1.9@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "Env": [ "MODE=production" ]
+      },
+      "Resources": {
+        "Limits": { "NanoCPUs": 500000000, "MemoryBytes": 268435456 },
+        "Reservations": { "NanoCPUs": 250000000, "MemoryBytes": 134217728 }
+      },
+      "Networks": [ { "Target": "net-frontend", "Aliases": [ "web" ] } ],
+      "Runtime": "container"
+    },
+    "ServiceID": "svc-web",
+    "Slot": 2,
+    "NodeID": "node-wkr-01",
+    "Status": {
+      "Timestamp": "2026-02-01T12:00:15Z",
+      "State": "running",
+      "Message": "started",
+      "ContainerStatus": { "ContainerID": "c0ffee0002", "PID": 4102 }
+    },
+    "DesiredState": "running",
+    "NetworksAttachments": [ { "Network": { "ID": "net-frontend", "Spec": { "Name": "shop_frontend" } }, "Addresses": [ "10.0.1.12/24" ] } ]
+  },
+  {
+    "ID": "task-api-2",
+    "Version": { "Index": 403 },
+    "CreatedAt": "2026-03-01T09:20:00Z",
+    "UpdatedAt": "2026-03-01T09:20:10Z",
+    "Spec": {
+      "ContainerSpec": { "Image": "registry.example.com/shop/api:1.4", "Env": [ "DATABASE_URL=postgres://db.internal/shop" ] },
+      "Placement": { "Constraints": [ "node.role == worker", "node.labels.zone == a" ] },
+      "Networks": [ { "Target": "net-host-not-in-the-list" }, { "Target": "net-frontend" } ],
+      "Runtime": "container"
+    },
+    "ServiceID": "svc-api",
+    "Slot": 1,
+    "NodeID": "node-wkr-01",
+    "Status": { "Timestamp": "2026-03-01T09:20:10Z", "State": "running", "Message": "started", "ContainerStatus": { "ContainerID": "c0ffee0003", "PID": 4103 } },
+    "DesiredState": "running"
+  },
+  {
+    "ID": "task-api-1",
+    "Version": { "Index": 404 },
+    "CreatedAt": "2026-02-01T12:00:00Z",
+    "UpdatedAt": "$NOW",
+    "Spec": {
+      "ContainerSpec": { "Image": "registry.example.com/shop/api:1.4", "Env": [ "DATABASE_URL=postgres://db.internal/shop" ] },
+      "Resources": { "Reservations": { "NanoCPUs": 1000000000, "MemoryBytes": 1073741824 } },
+      "Runtime": "container"
+    },
+    "ServiceID": "svc-api",
+    "Slot": 1,
+    "NodeID": "node-wkr-01",
+    "Status": {
+      "Timestamp": "2026-03-01T09:19:55Z",
+      "State": "failed",
+      "Message": "started",
+      "Err": "task: non-zero exit (137)",
+      "ContainerStatus": { "ContainerID": "c0ffee0004", "ExitCode": 137 }
+    },
+    "DesiredState": "shutdown"
+  },
+  {
+    "ID": "task-agent-mgr-01",
+    "Version": { "Index": 405 },
+    "CreatedAt": "2026-01-11T09:00:00Z",
+    "UpdatedAt": "2026-01-11T09:00:10Z",
+    "Spec": { "ContainerSpec": { "Image": "example/agent:3" }, "Resources": { "Limits": { "MemoryBytes": 67108864 } }, "Runtime": "container" },
+    "ServiceID": "svc-agent",
+    "NodeID": "node-mgr-01",
+    "Status": { "Timestamp": "2026-01-11T09:00:10Z", "State": "running", "Message": "started", "ContainerStatus": { "ContainerID": "c0ffee0005" } },
+    "DesiredState": "running"
+  },
+  {
+    "ID": "task-agent-mgr-02",
+    "Version": { "Index": 406 },
+    "CreatedAt": "2026-01-11T09:00:00Z",
+    "UpdatedAt": "2026-01-11T09:00:10Z",
+    "Spec": { "ContainerSpec": { "Image": "example/agent:3" }, "Resources": { "Limits": { "MemoryBytes": 67108864 } }, "Runtime": "container" },
+    "ServiceID": "svc-agent",
+    "NodeID": "node-mgr-02",
+    "Status": { "Timestamp": "2026-01-11T09:00:10Z", "State": "running", "Message": "started", "ContainerStatus": { "ContainerID": "c0ffee0006" } },
+    "DesiredState": "running"
+  },
+  {
+    "ID": "task-agent-wkr-01",
+    "Version": { "Index": 407 },
+    "CreatedAt": "2026-01-11T09:00:00Z",
+    "UpdatedAt": "2026-01-11T09:00:10Z",
+    "Spec": { "ContainerSpec": { "Image": "example/agent:3" }, "Resources": { "Limits": { "MemoryBytes": 67108864 } }, "Runtime": "container" },
+    "ServiceID": "svc-agent",
+    "NodeID": "node-wkr-01",
+    "Status": { "Timestamp": "2026-01-11T09:00:10Z", "State": "starting", "Message": "starting", "ContainerStatus": { "ContainerID": "c0ffee0007" } },
+    "DesiredState": "running"
+  },
+  {
+    "ID": "task-worker-1",
+    "Version": { "Index": 408 },
+    "CreatedAt": "2026-03-01T09:10:00Z",
+    "UpdatedAt": "2026-03-01T09:10:00Z",
+    "Spec": {
+      "ContainerSpec": { "Image": "registry.example.com/shop/worker:0.7" },
+      "Resources": { "Reservations": { "MemoryBytes": 68719476736 } },
+      "Networks": [ { "Target": "net-frontend" } ],
+      "Runtime": "container"
+    },
+    "ServiceID": "svc-worker",
+    "Slot": 1,
+    "Status": {
+      "Timestamp": "2026-03-01T09:10:00Z",
+      "State": "pending",
+      "Message": "pending task scheduling",
+      "Err": "no suitable node (insufficient resources on 3 nodes)"
+    },
+    "DesiredState": "running"
+  },
+  {
+    "ID": "task-plugin-wkr-01",
+    "Version": { "Index": 409 },
+    "CreatedAt": "2026-02-15T14:00:00Z",
+    "UpdatedAt": "2026-02-15T14:00:05Z",
+    "Spec": { "PluginSpec": { "Name": "logshipper", "Remote": "example/logshipper-plugin:1" }, "Runtime": "plugin" },
+    "ServiceID": "svc-plugin",
+    "NodeID": "node-wkr-01",
+    "Status": { "Timestamp": "2026-02-15T14:00:05Z", "State": "running", "Message": "started" },
+    "DesiredState": "running"
+  },
+  {
+    "ID": "task-orphan",
+    "Version": { "Index": 410 },
+    "CreatedAt": "2026-02-20T16:00:00Z",
+    "UpdatedAt": "2026-02-20T16:00:05Z",
+    "Spec": { "ContainerSpec": { "Image": "example/removed:1" }, "Runtime": "container" },
+    "ServiceID": "svc-removed",
+    "Slot": 1,
+    "NodeID": "node-mgr-02",
+    "Status": { "Timestamp": "2026-02-20T16:00:05Z", "State": "running", "Message": "started" },
+    "DesiredState": "running"
+  }
+]
