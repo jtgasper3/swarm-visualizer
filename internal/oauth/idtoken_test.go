@@ -82,6 +82,12 @@ func TestValidateToken(t *testing.T) {
 
 	defaultCfg := &config.Config{OAuthConfig: config.OAuthConfig{ClientID: client, Issuer: issuer}}
 
+	noExpClaims := validClaims()
+	delete(noExpClaims, "exp")
+
+	zeroExpClaims := validClaims()
+	zeroExpClaims["exp"] = 0
+
 	noIssClaims := validClaims()
 	delete(noIssClaims, "iss")
 
@@ -99,6 +105,10 @@ func TestValidateToken(t *testing.T) {
 		{name: "issuer not configured rejects every token", token: signRS256(noIssClaims, key, kid), cfg: &config.Config{OAuthConfig: config.OAuthConfig{ClientID: client}}, wantErr: true},
 		{name: "token without an issuer", token: signRS256(noIssClaims, key, kid), wantErr: true},
 		{name: "expired token", token: signRS256(expiredClaims, key, kid), wantErr: true},
+		// Correctly signed, for this client, from the right issuer, and with
+		// nothing to say when it stops being valid.
+		{name: "token without an expiry", token: signRS256(noExpClaims, key, kid), wantErr: true},
+		{name: "token with a zero expiry", token: signRS256(zeroExpClaims, key, kid), wantErr: true},
 		{name: "wrong audience", token: signRS256(wrongAudClaims, key, kid), wantErr: true},
 		{name: "wrong issuer", token: signRS256(wrongIssClaims, key, kid), wantErr: true},
 		{name: "unknown kid", token: signRS256(validClaims(), key, "other-kid"), wantErr: true},

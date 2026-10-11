@@ -23,9 +23,9 @@ func (a *Authenticator) ValidateToken(r *http.Request) (jwt.MapClaims, error) {
 	return nil, fmt.Errorf("Unauthorized: no session cookie or bearer token")
 }
 
-// validateRawToken verifies an ID token's signature, issuer, and audience and
-// returns its claims. It is shared by bearer-token requests and the OAuth
-// callback (which additionally checks the nonce).
+// validateRawToken verifies an ID token's signature, expiry, issuer, and
+// audience and returns its claims. It is shared by bearer-token requests and
+// the OAuth callback (which additionally checks the nonce).
 func (a *Authenticator) validateRawToken(rawIDToken string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(rawIDToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -46,7 +46,12 @@ func (a *Authenticator) validateRawToken(rawIDToken string) (jwt.MapClaims, erro
 		}
 
 		return rsaPublicKey, nil
-	})
+	},
+		// The parser checks an expiry only when the token has one. Every
+		// identity provider is required to set it, and a token without one
+		// would otherwise be good for as long as its signing key is.
+		jwt.WithExpirationRequired(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ID token: %v", err)
 	}

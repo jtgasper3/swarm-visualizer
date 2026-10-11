@@ -338,6 +338,34 @@ func TestHandleCallback_SessionCookieStaysSmall(t *testing.T) {
 	}
 }
 
+// An identity provider that issued an ID token with no expiry would be handing
+// out something valid for good. The login is refused rather than given a
+// session.
+func TestHandleCallback_RejectsTokenWithoutExpiry(t *testing.T) {
+	f := newCallbackFixture(t)
+	f.respond = func(w http.ResponseWriter, r *http.Request) {
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+			"iss": testIssuer, "aud": testClient, "sub": "user-1", "nonce": "nonce-abc", "iat": time.Now().Unix(),
+		})
+		tok.Header["kid"] = testKid
+		idToken, err := tok.SignedString(f.key)
+		if err != nil {
+			t.Errorf("sign id_token: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"at","token_type":"Bearer","id_token":"` + idToken + `"}`))
+	}
+
+	rr := f.callback("nonce-abc", "verifier-1")
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusUnauthorized, rr.Body.String())
+	}
+	if v := cookieValues(rr)[sessionCookie]; v != "" {
+		t.Errorf("a session was issued for a token with no expiry: %q", v)
+	}
+	assertFlowCookiesCleared(t, rr)
+}
+
 // A session lasts until the ID token would have expired or for SessionMaxAge,
 // whichever is shorter, as it did when the cookie held the token itself.
 func TestHandleCallback_SessionLifetime(t *testing.T) {
