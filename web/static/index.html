@@ -283,7 +283,7 @@
             <filter-section title="NODES" :state="nodesState" :open="isSectionOpen('NODES')"
               @update:open="toggleSection('NODES')" @toggle="toggleSelection('nodes', allNodeIds)">
               <filter-row v-for="node in visibleNodes" :key="node.ID"
-                :title="node.Description.Hostname" :selected="filters.nodesSelection.includes(node.ID)"
+                :title="node.Description.Hostname" :selected="isSelected('nodes', node.ID)"
                 :meta="node.Spec.Role" show-only
                 @toggle="toggleSelection('nodes', [node.ID])" @only="onlySelection('nodes', [node.ID])"></filter-row>
             </filter-section>
@@ -300,7 +300,7 @@
 
                 <template v-if="isStackOpen(stack.name)">
                   <filter-row v-for="service in stack.services" :key="service.ID" indent
-                    :title="service.Spec.Name" :selected="filters.servicesSelection.includes(service.ID)"
+                    :title="service.Spec.Name" :selected="isSelected('services', service.ID)"
                     :meta="tallyText(service)" :alert="serviceAlert(service)" :alert-label="tallyLabel(service)"
                     @toggle="toggleSelection('services', [service.ID])">
                     <template #append>
@@ -316,9 +316,9 @@
             <filter-section title="NETWORKS" :state="networksState" :open="isSectionOpen('NETWORKS')"
               @update:open="toggleSection('NETWORKS')" @toggle="toggleSelection('networks', allNetworkIds)">
               <filter-row v-for="network in visibleNetworks" :key="network.Id"
-                :title="network.Name" :selected="filters.networksSelection.includes(network.Id)" show-only
+                :title="network.Name" :selected="isSelected('networks', network.Id)" show-only
                 @toggle="toggleSelection('networks', [network.Id])" @only="onlySelection('networks', [network.Id])"></filter-row>
-              <filter-row v-if="!searchActive && networks.length" title="(none)" :selected="filters.networksSelection.includes('(none)')"
+              <filter-row v-if="!searchActive && networks.length" title="(none)" :selected="isSelected('networks', '(none)')"
                 @toggle="toggleSelection('networks', ['(none)'])"></filter-row>
             </filter-section>
 
@@ -372,6 +372,9 @@
           </v-list>
         </v-container>
       </v-main>
+
+      <!-- The details of whichever node, service or task the address names. -->
+      <details-dialog :nodes="nodes" :services="services" :tasks="tasks"></details-dialog>
     </v-app>
   </div>
 
@@ -380,9 +383,10 @@
     import { createVuetify } from 'vuetify';
     import { useStorage, refDebounced } from '@vueuse/core';
 
-    import { serviceMatchesQuery, serviceTallies, stackNameOf, tallyAlert, visibleTasks } from './utils.js';
+    import { assignAccents, serviceMatchesQuery, serviceTallies, stackNameOf, tallyAlert, visibleTasks } from './utils.js';
+    import { rememberTarget, storageKey } from './state.js';
 
-    import MyDetails from './details.js';
+    import MyDetails, { DetailsDialog } from './details.js';
     import { FilterRow, FilterSection } from './filters.js';
     import Node from './node.js';
     import Unassigned from './unassigned.js';
@@ -416,9 +420,9 @@
         function connectionLabel(state) {
           return state === 'connected' && stale.value ? 'connected, data out of date' : state;
         }
-        const drawer = useStorage('drawer', true);
+        const drawer = useStorage(storageKey('drawer'), true);
         const wsState = shallowRef('connecting');
-        const filters = useStorage('filters.5', {
+        const filters = useStorage(storageKey('filters.5'), {
           filterText: '',
           networksSelection: new Array(),
           nodesSelection: new Array(),
@@ -443,11 +447,17 @@
           },
         });
 
-        const sort = useStorage('sort', 'Service Name');
-        const nodes = ref([]);
-        const networks = ref([]);
-        const services = ref([]);
-        const tasks = ref([]);
+        const sort = useStorage(storageKey('sort'), 'Service Name');
+        // Each snapshot replaces these outright, so nothing inside them needs
+        // watching: a shallow ref spares Vue from wrapping every node, service
+        // and task in a proxy each time one arrives.
+        const nodes = shallowRef([]);
+        const networks = shallowRef([]);
+        const services = shallowRef([]);
+        const tasks = shallowRef([]);
+        // The accents handed out so far, so that a service keeps its colour
+        // from one snapshot to the next.
+        let accents = new Map();
 
         const vuetifyDefaults = ref({
           global: {
@@ -506,7 +516,7 @@
             }
             return node.Spec.Role === filters.value.nodeRoles;
           })
-          .filter(node => filters.value.nodesSelection.includes(node.ID))
+          .filter(node => selected.value.nodes.has(node.ID))
           // Searching a hostname narrows to that node; searching a service name
           // keeps the nodes actually running it. Without this the drawer says
           // "swarm-wkr-01" while every node card stays up holding no tasks.
@@ -555,6 +565,7 @@
         }
 
         function getAuthorized() {
+          rememberTarget();
           window.location.href = window.location.pathname + 'login';
         }
 
@@ -577,9 +588,21 @@
           ? [...networks.value.map(network => network.Id), '(none)']
           : []);
 
+        // The selections as sets. They are consulted for every row in the
+        // drawer and every card, and as arrays each of those lookups was a scan.
+        const selected = computed(() => ({
+          nodes: new Set(filters.value.nodesSelection),
+          services: new Set(filters.value.servicesSelection),
+          networks: new Set(filters.value.networksSelection),
+        }));
+
+        function isSelected(key, id) {
+          return selected.value[key].has(id);
+        }
+
         function selectionState(key, ids) {
-          const selected = filters.value[SELECTION_PROPS[key]];
-          const on = ids.reduce((count, id) => count + (selected.includes(id) ? 1 : 0), 0);
+          const chosen = selected.value[key];
+          const on = ids.reduce((count, id) => count + (chosen.has(id) ? 1 : 0), 0);
           return { on, total: ids.length, kind: on === ids.length ? 'all' : on === 0 ? 'none' : 'some' };
         }
 
@@ -692,82 +715,95 @@
           stale.value = !!data.stale;
           lastUpdated.value = data.lastUpdated ?? null;
 
-          networks.value = data.networks;
+          // Everything below is one pass over each group, with lookups by ID.
+          // Matching tasks to services and nodes by scanning made the work
+          // grow with the product of their numbers.
+          const nodeIds = data.nodes.map(node => node.ID);
+          const serviceIds = data.services.map(service => service.ID);
+          const networkIds = data.networks.map(network => network.Id);
 
           if (!filters.value.selectionsInitialized) {
-            filters.value.nodesSelection = data.nodes.map(node => node.ID);
-            filters.value.servicesSelection = data.services.map(service => service.ID);
+            filters.value.nodesSelection = [...nodeIds];
+            filters.value.servicesSelection = [...serviceIds];
             // '(none)' is a real selectable bucket for services attached to no
             // network; seed it too, or those services are hidden on first load.
-            filters.value.networksSelection = [...data.networks.map(network => network.Id), '(none)'];
-            filters.value.knownNodeIds = [...filters.value.nodesSelection];
-            filters.value.knownServiceIds = [...filters.value.servicesSelection];
-            filters.value.knownNetworkIds = [...filters.value.networksSelection];
+            filters.value.networksSelection = [...networkIds, '(none)'];
+            filters.value.knownNodeIds = [...nodeIds];
+            filters.value.knownServiceIds = [...serviceIds];
+            filters.value.knownNetworkIds = [...networkIds, '(none)'];
             filters.value.selectionsInitialized = true;
           } else {
-            const newNetworkIds = data.networks
-              .filter(network => !filters.value.knownNetworkIds.includes(network.Id))
-              .map(network => network.Id);
-            if (newNetworkIds.length > 0) {
-              filters.value.networksSelection.push(...newNetworkIds);
-              filters.value.knownNetworkIds.push(...newNetworkIds);
+            // Whatever has appeared since the last snapshot starts out selected.
+            const arrivals = [
+              [nodeIds, 'knownNodeIds', 'nodesSelection'],
+              [serviceIds, 'knownServiceIds', 'servicesSelection'],
+              [networkIds, 'knownNetworkIds', 'networksSelection'],
+            ];
+            for (const [ids, knownProp, selectionProp] of arrivals) {
+              const known = new Set(filters.value[knownProp]);
+              const fresh = ids.filter(id => !known.has(id));
+              if (fresh.length > 0) {
+                filters.value[selectionProp].push(...fresh);
+                filters.value[knownProp].push(...fresh);
+              }
             }
           }
 
-          services.value = data.services.map((service) => {
-            service.index = data.services.findIndex((serv) => serv.ID === service.ID);
+          const networksById = new Map(data.networks.map(network => [network.Id, network]));
+          networks.value = data.networks;
+
+          accents = assignAccents(serviceIds, accents);
+          const servicesById = new Map();
+          for (const service of data.services) {
+            service.accent = accents.get(service.ID);
             if (service.Spec.TaskTemplate.Networks) {
               // A service can be attached to a network that is not in the
               // list, such as the host network; keep only the ones that are.
               service.networks = service.Spec.TaskTemplate.Networks
-                .map((network) => data.networks.find((n) => n.Id === network.Target))
+                .map(network => networksById.get(network.Target))
                 .filter(Boolean);
             }
-            return service;
-          })
-
-          if (filters.value.selectionsInitialized) {
-            const newServiceIds = data.services
-              .filter(service => !filters.value.knownServiceIds.includes(service.ID))
-              .map(service => service.ID);
-            if (newServiceIds.length > 0) {
-              filters.value.servicesSelection.push(...newServiceIds);
-              filters.value.knownServiceIds.push(...newServiceIds);
-            }
+            servicesById.set(service.ID, service);
           }
+          services.value = data.services;
 
           // A swarm with no tasks sends null rather than an empty list.
-          const allTasks = (data.tasks || []).map((task) => {
-            task.service = services.value.find((service) => task.ServiceID === service.ID);
-            return task;
-          });
-          tasks.value = allTasks;
-
-          nodes.value = data.nodes.map((node) => {
-            node.tasks = allTasks.filter(task => task.NodeID === node.ID);
-            return node;
-          });
-
-          if (filters.value.selectionsInitialized) {
-            const newNodeIds = data.nodes
-              .filter(node => !filters.value.knownNodeIds.includes(node.ID))
-              .map(node => node.ID);
-            if (newNodeIds.length > 0) {
-              filters.value.nodesSelection.push(...newNodeIds);
-              filters.value.knownNodeIds.push(...newNodeIds);
+          const allTasks = data.tasks || [];
+          const tasksByNode = new Map();
+          for (const task of allTasks) {
+            task.service = servicesById.get(task.ServiceID);
+            const onNode = tasksByNode.get(task.NodeID);
+            if (onNode) {
+              onNode.push(task);
+            } else {
+              tasksByNode.set(task.NodeID, [task]);
             }
           }
+          tasks.value = allTasks;
 
-          // Prune stale IDs that no longer exist in the cluster
-          const currentNodeIds = new Set(data.nodes.map(node => node.ID));
-          const currentServiceIds = new Set(data.services.map(service => service.ID));
-          const currentNetworkIds = new Set(data.networks.map(network => network.Id));
-          filters.value.knownNodeIds = filters.value.knownNodeIds.filter(id => currentNodeIds.has(id));
-          filters.value.knownServiceIds = filters.value.knownServiceIds.filter(id => currentServiceIds.has(id));
-          filters.value.knownNetworkIds = filters.value.knownNetworkIds.filter(id => currentNetworkIds.has(id));
-          filters.value.nodesSelection = filters.value.nodesSelection.filter(id => currentNodeIds.has(id));
-          filters.value.servicesSelection = filters.value.servicesSelection.filter(id => currentServiceIds.has(id));
-          filters.value.networksSelection = filters.value.networksSelection.filter(id => currentNetworkIds.has(id) || id === '(none)');
+          for (const node of data.nodes) {
+            node.tasks = tasksByNode.get(node.ID) ?? [];
+          }
+          nodes.value = data.nodes;
+
+          // Prune stale IDs that no longer exist in the cluster. The filters
+          // are saved to the browser's storage whenever they change, so they
+          // are only assigned when something was actually dropped.
+          const prune = (prop, current, keep) => {
+            const kept = filters.value[prop].filter(id => current.has(id) || id === keep);
+            if (kept.length !== filters.value[prop].length) {
+              filters.value[prop] = kept;
+            }
+          };
+          const currentNodeIds = new Set(nodeIds);
+          const currentServiceIds = new Set(serviceIds);
+          const currentNetworkIds = new Set(networkIds);
+          prune('knownNodeIds', currentNodeIds);
+          prune('knownServiceIds', currentServiceIds);
+          prune('knownNetworkIds', currentNetworkIds);
+          prune('nodesSelection', currentNodeIds);
+          prune('servicesSelection', currentServiceIds);
+          prune('networksSelection', currentNetworkIds, '(none)');
         }
 
         function onSystemThemeChange(event) {
@@ -794,6 +830,7 @@
           filteredNodes,
           sortedNodes,
           services,
+          tasks,
           sortedServicesGroups,
           pageError,
           dismissPageError,
@@ -812,6 +849,7 @@
           networksState,
           stackServiceIds,
           stackState,
+          isSelected,
           setSelection,
           toggleSelection,
           onlySelection,
@@ -833,6 +871,7 @@
       },
 
       components: {
+        DetailsDialog,
         FilterRow,
         FilterSection,
         MyDetails,
