@@ -70,7 +70,7 @@ type mobySource struct{ cli *client.Client }
 // newMobySource creates a swarmSource backed by a Docker client configured from
 // the environment.
 func newMobySource() (swarmSource, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, err
 	}

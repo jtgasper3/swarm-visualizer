@@ -211,7 +211,9 @@ func (h *Hub) handleConnections(w http.ResponseWriter, r *http.Request) {
 		claims, err := h.validate(r)
 		if err != nil {
 			ws.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-			ws.WriteMessage(websocket.TextMessage, []byte("401-Unauthorized"))
+			// Best effort: the connection is closed next whether or not the
+			// client hears why.
+			_ = ws.WriteMessage(websocket.TextMessage, []byte("401-Unauthorized"))
 			log.Printf("Client unauthorized: %s %v", r.RemoteAddr, err)
 			ws.Close()
 			return
@@ -270,8 +272,9 @@ func (c *wsClient) writePump() {
 		case msg, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 			if !ok {
-				// Unregistered: send a close frame and stop.
-				c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(c.closeCode, ""))
+				// Unregistered: send a close frame and stop. If it cannot
+				// be written the client is already gone.
+				_ = c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(c.closeCode, ""))
 				c.conn.Close()
 				return
 			}

@@ -231,6 +231,23 @@ docker compose up --watch
 
 Vue, Vuetify, VueUse, the Material Design icon font and Roboto are kept in `web/static/vendor` and compiled into the server with the rest of the frontend; nothing is loaded from a CDN. `web/vendor.sh` names the versions and downloads them, and `web/vendor.sha256` records what it fetched. To update one, change its version in the script, run it, and review the diff. A test fails if the files and the checksums disagree, or if the page refers to anything outside the server.
 
+### Tests
+
+```sh
+go test ./...
+node --test web/test/*.test.mjs
+```
+
+`go test` covers the server, and in `cmd/server` the dashboard itself: those tests run the whole server against a swarm described by the files in `cmd/server/testdata`, open the page in headless Chrome or Chromium, and check what it shows. They are skipped when no browser is installed (`CHROME_BIN` names one that is somewhere unusual) and with `-short`. To reproduce something seen on a real swarm, save what its daemon answers for `/nodes`, `/services`, `/tasks` and `/networks` into a new directory under `testdata` and point a test at it.
+
+The second command tests the frontend's helper functions and needs Node 22.7 or later, nothing else.
+
+CI also checks formatting and runs `golangci-lint`, which you can run the same way without installing it:
+
+```sh
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run
+```
+
 ### Spin up some test stacks and individual services
 
 ```
