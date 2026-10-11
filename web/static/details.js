@@ -287,7 +287,7 @@ export default {
                   <v-col cols="2">
                     <strong>Image</strong>
                   </v-col>
-                  <v-col cols="8">{{ task.Spec.ContainerSpec.Image }}</v-col>
+                  <v-col cols="8">{{ task.Spec.ContainerSpec?.Image }}</v-col>
                   
                 </v-row>
               </v-col>
@@ -302,7 +302,7 @@ export default {
                   </v-col>
 
                   <v-col cols="8">
-                    {{ task.Spec.ContainerSpec.Args }}
+                    {{ task.Spec.ContainerSpec?.Args }}
                   </v-col>
                 </v-row>
               </v-col>
@@ -537,7 +537,7 @@ export default {
                       <strong>Image</strong>
                     </v-col>
 
-                    <v-col cols="8" style="overflow: hidden;"><span style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left;">{{ service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0] }}</span></v-col>
+                    <v-col cols="8" style="overflow: hidden;"><span style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left;">{{ service.Spec.TaskTemplate.ContainerSpec?.Image?.split('@')[0] }}</span></v-col>
                   </v-row>
                 </v-col>
                 <v-divider />
@@ -550,7 +550,7 @@ export default {
                     </v-col>
 
                     <v-col cols="8">
-                      {{ service.Spec.TaskTemplate.ContainerSpec.Args }}
+                      {{ service.Spec.TaskTemplate.ContainerSpec?.Args }}
                     </v-col>
                   </v-row>
                 </v-col>
@@ -713,7 +713,7 @@ export default {
 
                     <v-col cols="8">
                       <ul>
-                        <li v-for="constraint in (service.Spec.Placement?.Constraints ?? [])" :key="constraint">{{ constraint }}</li>
+                        <li v-for="constraint in (service.Spec.TaskTemplate.Placement?.Constraints ?? [])" :key="constraint">{{ constraint }}</li>
                       </ul>
                     </v-col>
                   </v-row>

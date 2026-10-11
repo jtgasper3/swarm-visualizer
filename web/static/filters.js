@@ -1,6 +1,6 @@
 // Shared grammar for every filter list in the navigation drawer.
 //
-// A row is: [tri-state box] [label] [n/m tally or meta] [Only] [chevron]
+// A row is: [tri-state box] [label] [alert] [n/m tally or meta] [Only] [chevron]
 // Selection state is always passed in as { on, total, kind }, derived by the
 // caller from the flat *Selection arrays - never stored alongside them.
 
@@ -41,6 +41,9 @@ export const FilterRow = {
     state: { type: Object, default: null },
     selected: { type: Boolean, default: false },
     meta: { type: String, default: '' },
+    // 'warning' or 'error' flags the row; alertLabel says why.
+    alert: { type: String, default: '' },
+    alertLabel: { type: String, default: '' },
     showOnly: { type: Boolean, default: false },
     expandable: { type: Boolean, default: false },
     open: { type: Boolean, default: false },
@@ -60,8 +63,10 @@ export const FilterRow = {
         :aria-label="(checked ? 'Deselect ' : 'Select ') + title" @update:model-value="$emit('toggle')"></v-checkbox-btn>
       <button type="button" class="filter-row__label" :class="{ 'font-weight-bold': strong }" :title="title"
         @click="$emit('toggle')">{{ title }}</button>
+      <v-icon v-if="alert" class="filter-row__alert" icon="mdi-alert" size="x-small" :color="alert"
+        role="img" :aria-label="alertLabel" :title="alertLabel"></v-icon>
       <span v-if="state" :class="tallyClass">{{ state.on }}/{{ state.total }}</span>
-      <span v-else-if="meta" class="filter-row__meta">{{ meta }}</span>
+      <span v-else-if="meta" class="filter-row__meta" :class="{ 'filter-row__meta--alert': alert }">{{ meta }}</span>
       <v-btn v-if="showOnly" class="filter-row__only" :aria-label="'Show only ' + title"
         @click="$emit('only')">Only</v-btn>
       <slot name="append" />

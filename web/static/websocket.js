@@ -4,6 +4,7 @@ export default {
   data() {
     return {
       ws: null,
+      reconnectTimer: null,
       reconnectAttempts: 0,
       maxReconnectInterval: 30000, // 30 seconds
       connected: false,
@@ -65,13 +66,17 @@ export default {
       this.reconnectAttempts++;
       const reconnectInterval = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.maxReconnectInterval);
       console.log(`Reconnecting in ${reconnectInterval / 1000} seconds...`);
-      setTimeout(() => {
+      this.reconnectTimer = setTimeout(() => {
         this.connectWebSocket();
       }, reconnectInterval);
     },
   },
-  beforeDestroy() {
+  beforeUnmount() {
+    // Closing fires onclose, which would schedule a reconnect for a component
+    // that no longer exists.
+    clearTimeout(this.reconnectTimer);
     if (this.ws) {
+      this.ws.onclose = null;
       this.ws.close();
     }
   }

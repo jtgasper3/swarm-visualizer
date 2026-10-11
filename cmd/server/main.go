@@ -23,7 +23,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	fs := http.FileServer(http.Dir("./static"))
-	mux.Handle(contextRoot, http.StripPrefix(contextRoot, fs))
+	mux.Handle(contextRoot, http.StripPrefix(contextRoot, revalidated(fs)))
 
 	// Register auth first so its token validator can be handed to the WebSocket
 	// handler. auth is nil when authentication is disabled.
@@ -64,6 +64,20 @@ func main() {
 		log.Fatal("Server forced to shutdown: ", err)
 	}
 	log.Println("Server stopped")
+}
+
+// revalidated makes browsers check with the server before reusing a cached
+// static file. The frontend has no build step and no versioned file names, so
+// the page and the modules it imports have to come from the same release. Left
+// to their own heuristics, browsers reload the page after an upgrade but keep
+// taking its modules from cache, and a new page running against old modules
+// can fail to load at all. "no-cache" still permits caching: a file that has
+// not changed costs a 304 rather than a download.
+func revalidated(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		h.ServeHTTP(w, r)
+	})
 }
 
 // healthzHandler reports readiness for orchestrator health checks. It returns

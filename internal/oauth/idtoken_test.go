@@ -82,17 +82,22 @@ func TestValidateToken(t *testing.T) {
 
 	defaultCfg := &config.Config{OAuthConfig: config.OAuthConfig{ClientID: client, Issuer: issuer}}
 
+	noIssClaims := validClaims()
+	delete(noIssClaims, "iss")
+
 	tests := []struct {
 		name    string
 		token   string
-		bearer  bool
+		cookie  bool
 		noToken bool
 		cfg     *config.Config
 		wantErr bool
 	}{
-		{name: "valid token via cookie", token: signRS256(validClaims(), key, kid)},
-		{name: "valid token via bearer header", token: signRS256(validClaims(), key, kid), bearer: true},
-		{name: "issuer not configured skips check", token: signRS256(wrongIssClaims, key, kid), cfg: &config.Config{OAuthConfig: config.OAuthConfig{ClientID: client}}},
+		{name: "valid token via bearer header", token: signRS256(validClaims(), key, kid)},
+		// The cookie holds a session, which an ID token is not.
+		{name: "ID token in the session cookie is rejected", token: signRS256(validClaims(), key, kid), cookie: true, wantErr: true},
+		{name: "issuer not configured rejects every token", token: signRS256(noIssClaims, key, kid), cfg: &config.Config{OAuthConfig: config.OAuthConfig{ClientID: client}}, wantErr: true},
+		{name: "token without an issuer", token: signRS256(noIssClaims, key, kid), wantErr: true},
 		{name: "expired token", token: signRS256(expiredClaims, key, kid), wantErr: true},
 		{name: "wrong audience", token: signRS256(wrongAudClaims, key, kid), wantErr: true},
 		{name: "wrong issuer", token: signRS256(wrongIssClaims, key, kid), wantErr: true},
@@ -112,14 +117,14 @@ func TestValidateToken(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 			if !tc.noToken {
-				if tc.bearer {
-					req.Header.Set("Authorization", "Bearer "+tc.token)
+				if tc.cookie {
+					req.AddCookie(&http.Cookie{Name: sessionCookie, Value: tc.token})
 				} else {
-					req.AddCookie(&http.Cookie{Name: "id_token", Value: tc.token})
+					req.Header.Set("Authorization", "Bearer "+tc.token)
 				}
 			}
 
-			a := &Authenticator{cfg: cfg, keys: keys}
+			a := &Authenticator{cfg: cfg, keys: keys, sessionKey: []byte("test-session-key")}
 			claims, err := a.ValidateToken(req)
 			if tc.wantErr {
 				if err == nil {

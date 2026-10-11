@@ -35,6 +35,12 @@ var upgrader = websocket.Upgrader{
 
 const wsWriteTimeout = 5 * time.Second
 
+// wsReadLimit caps the size of a message from a client. The server expects
+// none: it reads only to notice disconnects and pongs, and the protocol already
+// limits control frames to 125 bytes. Without a cap, a client can make the
+// server buffer a message of any size.
+const wsReadLimit = 512
+
 // Hub owns the set of connected WebSocket clients and fans out snapshot frames
 // to them. One Hub backs the running server; tests construct their own.
 type Hub struct {
@@ -116,12 +122,16 @@ type wsClient struct {
 func RegisterDockerHandlers(mux *http.ServeMux, cfg *config.Config, validate TokenValidator) *Hub {
 	hub := newHub(cfg, validate)
 
+	if err := validateSensitiveDataPaths(cfg.SensitiveDataPaths); err != nil {
+		log.Fatal(err)
+	}
+
 	src, err := newMobySource()
 	if err != nil {
 		log.Fatal("Docker client error:", err)
 	}
 
-	go inspectSwarmServices(cfg, src, hub)
+	go newInspector(cfg, src, hub).run()
 	go hub.runBroadcasts()
 
 	mux.HandleFunc(cfg.ContextRoot+"ws", hub.handleConnections)
@@ -142,10 +152,11 @@ func (h *Hub) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		// Upgrade has already written the error response.
 		log.Println("Upgrade error:", err)
-		http.Error(w, "Could not upgrade to WebSocket", http.StatusInternalServerError)
 		return
 	}
+	ws.SetReadLimit(wsReadLimit)
 
 	if cfg.AuthEnabled {
 		claims, err := h.validate(r)

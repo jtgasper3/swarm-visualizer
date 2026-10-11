@@ -92,6 +92,15 @@
       font-size: 0.7rem;
       opacity: 0.55;
     }
+    .filter-row__alert {
+      flex: none;
+    }
+    /* The icon carries the severity colour. Amber or red text this small is
+       hard to read on one theme or the other, so the count only gains weight. */
+    .filter-row__meta--alert {
+      opacity: 1;
+      font-weight: 700;
+    }
     .filter-row__only {
       flex: none;
       visibility: hidden;
@@ -143,13 +152,26 @@
     }
   </style>
   
+  <!-- The local modules are mapped to "?r=2" addresses for one reason. Releases
+       from before the server sent Cache-Control left copies of these files in
+       browser caches, which reuse them without asking the server; a reload
+       would then run this page against those old copies and fail. A mapping
+       here applies to every import of the file, including the modules'
+       imports of each other, so they all load from an address no old copy is
+       stored under. Files added since then need no entry. -->
   <script type="importmap">
     {
       "imports": {
         "vue": "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.esm-browser.js",
         "vuetify": "https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.esm.js",
         "@vueuse/shared": "https://cdn.jsdelivr.net/npm/@vueuse/shared@12/index.min.mjs",
-        "@vueuse/core": "https://cdn.jsdelivr.net/npm/@vueuse/core@12/index.min.mjs"
+        "@vueuse/core": "https://cdn.jsdelivr.net/npm/@vueuse/core@12/index.min.mjs",
+        "./details.js": "./details.js?r=2",
+        "./filters.js": "./filters.js?r=2",
+        "./node.js": "./node.js?r=2",
+        "./task.js": "./task.js?r=2",
+        "./utils.js": "./utils.js?r=2",
+        "./websocket.js": "./websocket.js?r=2"
       }
     }
   </script>
@@ -266,6 +288,7 @@
               @update:open="toggleSection('STACKS')" @toggle="toggleSelection('services', allServiceIds)">
               <template v-for="stack in visibleServicesGroups" :key="stack.name">
                 <filter-row :title="stack.name" :state="stackState(stack)" strong show-only
+                  :alert="stackAlert(stack)" alert-label="Has a service with fewer tasks running than it wants"
                   :expandable="!searchActive" :open="isStackOpen(stack.name)"
                   @toggle="toggleSelection('services', stackServiceIds(stack))"
                   @only="onlySelection('services', stackServiceIds(stack))"
@@ -273,7 +296,8 @@
 
                 <template v-if="isStackOpen(stack.name)">
                   <filter-row v-for="service in stack.services" :key="service.ID" indent
-                    :title="createServiceName(service)" :selected="filters.servicesSelection.includes(service.ID)"
+                    :title="service.Spec.Name" :selected="filters.servicesSelection.includes(service.ID)"
+                    :meta="tallyText(service)" :alert="serviceAlert(service)" :alert-label="tallyLabel(service)"
                     @toggle="toggleSelection('services', [service.ID])">
                     <template #append>
                       <My-Details :service="service" v-slot="props">
@@ -307,8 +331,16 @@
 
       <v-main aria-label="Nodes and Services List">
         <v-container fluid>
+          <v-alert v-if="pageError" class="mb-4" type="error" variant="tonal" closable
+            title="Part of this page could not be displayed" :text="pageError"
+            @click:close="dismissPageError()"></v-alert>
           <v-list aria-label="Swarm Nodes" class="pa-0" style="overflow: initial; z-index: initial">
             <v-row class="d-flex flex-wrap ga-4">
+              <v-col v-if="visibleUnassigned.length" class="server-card pa-1" style="max-width: 19rem" cols="auto">
+                <v-list-item aria-label="Unassigned tasks" class="pa-0">
+                  <unassigned :tasks="visibleUnassigned"></unassigned>
+                </v-list-item>
+              </v-col>
               <v-col v-for="node in filteredNodes"
                 :key="node.ID"
                 class="server-card pa-1"
@@ -320,7 +352,7 @@
                 </v-list-item>
               </v-col>
             </v-row>
-            <v-row v-if="filteredNodes.length === 0" justify="center" class="mt-8">
+            <v-row v-if="filteredNodes.length === 0 && visibleUnassigned.length === 0" justify="center" class="mt-8">
               <v-col cols="auto">
                 <v-empty-state
                   :headline="wsState === 'connecting' ? 'Connecting...' : 'No nodes match the current filters'"
@@ -339,11 +371,12 @@
     import { createVuetify } from 'vuetify';
     import { useStorage, refDebounced } from '@vueuse/core';
 
-    import { serviceMatchesQuery, stackNameOf } from './utils.js';
+    import { serviceMatchesQuery, serviceTallies, stackNameOf, tallyAlert, visibleTasks } from './utils.js';
 
     import MyDetails from './details.js';
     import { FilterRow, FilterSection } from './filters.js';
     import Node from './node.js';
+    import Unassigned from './unassigned.js';
     import Websocket from './websocket.js';
 
     const vuetify = createVuetify({
@@ -352,7 +385,11 @@
       }
     });
 
-    createApp({
+    // Set by the app-level error handler below and shown as a banner.
+    const pageError = shallowRef('');
+    const dismissedErrors = new Set();
+
+    const app = createApp({
       setup() {
         const clusterName = shallowRef('');
         const authEnabled = shallowRef(false);
@@ -387,6 +424,7 @@
         const nodes = ref([]);
         const networks = ref([]);
         const services = ref([]);
+        const tasks = ref([]);
 
         const vuetifyDefaults = ref({
           global: {
@@ -456,12 +494,42 @@
           })
         );
 
-        function createServiceName(service) {
-          if (service.Spec.Mode.Replicated !== undefined  && service.Spec.Mode.Replicated.Replicas !== undefined && service.Spec.Mode.Replicated.Replicas > 1) {
-            return `${service.Spec.Name} (${service.Spec.Mode.Replicated.Replicas} replicas)`;
-          }
-          return service.Spec.Name;
-        } 
+        // Tasks on no listed node get a card of their own. The node filters
+        // do not apply to it: a service that cannot be scheduled is a fault,
+        // and narrowing the view to one node should not hide it.
+        const unassignedTasks = computed(() => {
+          const nodeIds = new Set(nodes.value.map(node => node.ID));
+          return tasks.value.filter(task => !nodeIds.has(task.NodeID));
+        });
+        const visibleUnassigned = computed(() => visibleTasks(unassignedTasks.value, debouncedFilters.value, sort.value));
+
+        // Running against wanted tasks per service, shown beside each service
+        // in the drawer and rolled up to its stack as an alert.
+        const tallies = computed(() => serviceTallies(services.value, tasks.value));
+
+        function tallyText(service) {
+          const tally = tallies.value.get(service.ID);
+          return tally ? `${tally.running}/${tally.desired}` : '';
+        }
+
+        function tallyLabel(service) {
+          const tally = tallies.value.get(service.ID);
+          return tally ? `${tally.running} of ${tally.desired} tasks running` : '';
+        }
+
+        function serviceAlert(service) {
+          return tallyAlert(tallies.value.get(service.ID));
+        }
+
+        function stackAlert(stack) {
+          const alerts = stack.services.map(serviceAlert);
+          return alerts.includes('error') ? 'error' : alerts.includes('warning') ? 'warning' : '';
+        }
+
+        function dismissPageError() {
+          dismissedErrors.add(pageError.value);
+          pageError.value = '';
+        }
 
         function getAuthorized() {
           window.location.href = window.location.pathname + 'login';
@@ -624,7 +692,11 @@
           services.value = data.services.map((service) => {
             service.index = data.services.findIndex((serv) => serv.ID === service.ID);
             if (service.Spec.TaskTemplate.Networks) {
-              service.networks = service.Spec.TaskTemplate.Networks.map((network) => data.networks.find((n) => n.Id === network.Target));
+              // A service can be attached to a network that is not in the
+              // list, such as the host network; keep only the ones that are.
+              service.networks = service.Spec.TaskTemplate.Networks
+                .map((network) => data.networks.find((n) => n.Id === network.Target))
+                .filter(Boolean);
             }
             return service;
           })
@@ -639,16 +711,15 @@
             }
           }
 
-          nodes.value = data.nodes.map((node) => {
-            if (data.tasks) {
-              node.tasks = data.tasks
-                .filter(task => task.NodeID === node.ID)
-                .map((task) => {
-                  task.service = services.value.find((service) => task.ServiceID === service.ID);
-                  return task;
-                });
-            }
+          // A swarm with no tasks sends null rather than an empty list.
+          const allTasks = (data.tasks || []).map((task) => {
+            task.service = services.value.find((service) => task.ServiceID === service.ID);
+            return task;
+          });
+          tasks.value = allTasks;
 
+          nodes.value = data.nodes.map((node) => {
+            node.tasks = allTasks.filter(task => task.NodeID === node.ID);
             return node;
           });
 
@@ -695,7 +766,13 @@
           sortedNodes,
           services,
           sortedServicesGroups,
-          createServiceName,
+          pageError,
+          dismissPageError,
+          visibleUnassigned,
+          tallyText,
+          tallyLabel,
+          serviceAlert,
+          stackAlert,
           getAuthorized,
           logout,
           allNodeIds,
@@ -731,16 +808,34 @@
         FilterSection,
         MyDetails,
         Node,
+        Unassigned,
         Websocket,
       },
 
       mounted() {
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.onSystemThemeChange);
       },
-      beforeDestroy() {
+      beforeUnmount() {
         window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', this.onSystemThemeChange);
       }
-    }).use(vuetify).mount('#app');
+    });
+
+    // The page is built from whatever the swarm reports, and one value in an
+    // unexpected shape should cost the card it belongs to, not the whole page.
+    // With a handler installed Vue renders the failing component as empty and
+    // carries on with the rest; the banner says that something is missing.
+    // The banner keeps the first error, since the ones after it tend to be
+    // knock-on failures, and a dismissed message does not come back when the
+    // same fault repeats on the next snapshot. Every error goes to the console.
+    app.config.errorHandler = (err) => {
+      console.error(err);
+      const message = err?.message ?? String(err);
+      if (!pageError.value && !dismissedErrors.has(message)) {
+        pageError.value = message;
+      }
+    };
+
+    app.use(vuetify).mount('#app');
   </script>
 </body>
 

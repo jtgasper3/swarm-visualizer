@@ -21,10 +21,13 @@ export default {
       <v-card-text v-if="task.service" class="mt-n2 pa-1 pb-0">
         <v-list density="compact" lines="false" class="pt-0" v-model:opened="opened">
           <v-list-item class="pa-0" min-height="12">
-            <template #title><span class="text-body-2">Image: <span :title="task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0]">{{ task.service.Spec.TaskTemplate.ContainerSpec.Image.split('@')[0].split('/').pop() }}</span></span></template>
+            <template #title><span class="text-body-2">Image: <span :title="image">{{ image.split('/').pop() }}</span></span></template>
           </v-list-item>
           <v-list-item class="pa-0" min-height="12">
             <template #title><span class="text-body-2">Container id: <span :title="task.Status.ContainerStatus?.ContainerID?.substring(0, 12)">{{ task.Status.ContainerStatus?.ContainerID?.substring(0, 12) }}</span></span></template>
+          </v-list-item>
+          <v-list-item class="pa-0" min-height="12" v-if="!task.NodeID && (task.Status.Err || task.Status.Message)">
+            <template #title><span class="text-body-2" style="white-space: normal; word-break: break-word;">{{ task.Status.Err || task.Status.Message }}</span></template>
           </v-list-item>
 
           <v-expand-transition>
@@ -64,10 +67,10 @@ export default {
 
               <v-list-subheader class="pa-0" style="min-height: 12px">Reservations and Limits</v-list-subheader>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
+                <template #title><span class="text-body-2">CPU Cores: {{ (task.service.Spec.TaskTemplate.Resources?.Reservations?.NanoCPUs ?? 0) / 1e9 }} / {{ (task.service.Spec.TaskTemplate.Resources?.Limits?.NanoCPUs ?? 0) / 1e9 }}</span></template>
               </v-list-item>
               <v-list-item class="pt-0 pb-0" min-height="12">
-                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Reservations?.MemoryBytes) }} / {{ formatBytes(task.service.Spec.TaskTemplate.Resources.Limits?.MemoryBytes) }}</span></template>
+                <template #title><span class="text-body-2">Memory: {{ formatBytes(task.service.Spec.TaskTemplate.Resources?.Reservations?.MemoryBytes) }} / {{ formatBytes(task.service.Spec.TaskTemplate.Resources?.Limits?.MemoryBytes) }}</span></template>
               </v-list-item>
             </div>
           </v-expand-transition>
@@ -102,6 +105,11 @@ export default {
     service: Object,
   },
   computed: {
+    // The image without its digest. A service that does not run a container
+    // (the plugin runtime) has no ContainerSpec and so no image.
+    image() {
+      return this.service?.Spec.TaskTemplate.ContainerSpec?.Image?.split('@')[0] ?? '';
+    },
     mode() {
       if (!this.service) return 'unknown';
       if (this.service.Spec.Mode.Replicated) {

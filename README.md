@@ -50,7 +50,7 @@ service:
 General Environment Variables:
 
 - `CLUSTER_NAME`: title to display on the main page
-- `CONTEXT_ROOT`: the context root of the web app; useful when working with reverse-proxies (default: `/`)
+- `CONTEXT_ROOT`: the context root of the web app; useful when working with reverse-proxies. A leading and a trailing slash are added if missing (default: `/`)
 - `LISTENER_PORT`: port to listen on (default: `8080`)
 - `MAX_WS_CONNECTIONS`: maximum number of concurrent WebSocket (dashboard) connections; further connections are rejected until a slot frees up (default: `256`)
 - `HIDE_ALL_CONFIGS`: hides all configs values (default: `false`)
@@ -60,27 +60,35 @@ General Environment Variables:
 - `HIDE_LABELS`: comma list of values that hides labels values from `all`, `container`, `network`, `node`, `service` (default: `(nothing)`)
 - `SENSITIVE_DATA_PATHS`: comma delimited path of values to remove from the exported data. See *Data Sanitization* below
 
+The boolean settings (`ENABLE_AUTHN` and the `HIDE_ALL_*` variables) accept `true` or `false`, in any capitalization, as well as `1` or `0`. Any other value, such as `yes`, stops the app at startup instead of being read as `false`.
+
 OIDC Environment Variables:
 
 - `ENABLE_AUTHN`: `true` enable OIDC authentication support (default: `false`)
 - `OIDC_CLIENT_ID`: standard OAuth client id
 - `OIDC_CLIENT_SECRET_FILE`: path to file containing a standard OAuth client secret
 - `OIDC_REDIRECT_URL`: this app's callback url; should end in `/callback` and will be registered in the identity provider. For example, `https://myswarm.example.internal/visualizer/callback`
-- `OIDC_SCOPES`: comma separated list of scopes. For example, `openid,profile,email`
+- `OIDC_SCOPES`: comma separated list of scopes. For example, `openid,profile,email`. `openid` is added if it is not listed, since without it no ID token is issued
 - `OIDC_WELL_KNOWN_URL`: location to look up the identity provider's public signing key, token and authorization endpoints. For example, `https://auth.example.com/.well-known/openid-configuration`
 - `OIDC_AUTH_URL`: authorization endpoint URL; overrides the value from `OIDC_WELL_KNOWN_URL` if set
 - `OIDC_TOKEN_URL`: token endpoint URL; overrides the value from `OIDC_WELL_KNOWN_URL` if set
 - `OIDC_USERNAME_CLAIM`: JWT claim to use as the display username (default: `preferred_username`)
-- `OIDC_SESSION_MAX_AGE`: lifetime of the session cookie in seconds (default: `3600`)
+- `OIDC_SESSION_MAX_AGE`: lifetime of the session cookie in seconds (default: `3600`). A session ends sooner if the ID token it came from expires first
 
-The login flow protects against CSRF with a `state` parameter and against token replay with a `nonce` (validated against the ID token's `nonce` claim in the callback). When authentication is enabled the app exposes a `<CONTEXT_ROOT>logout` endpoint (and a logout button in the UI) that clears the local session cookie. This is a *local* logout only — it does not call the identity provider's end-session endpoint, so an existing IdP session may sign the user straight back in.
+With `ENABLE_AUTHN=true` the app will not start unless `OIDC_CLIENT_ID`, `OIDC_REDIRECT_URL` and `OIDC_WELL_KNOWN_URL` are set and the well-known document can be fetched and names an issuer.
+
+The login flow protects against CSRF with a `state` parameter, against token replay with a `nonce` (validated against the ID token's `nonce` claim in the callback), and against a stolen authorization code with PKCE.
+
+After login the browser holds a small signed session cookie rather than the ID token itself, which can be too large for a cookie when it carries many group claims. The cookie is signed with a key derived from the client secret together with the issuer, client ID and redirect URL, so sessions survive a restart and are accepted by every replica of this deployment but by no other; changing any of those signs everyone out. Without a client secret a random key is used instead: sessions last only until the process restarts, and replicas do not accept each other's, so run a single replica in that case. Clients other than a browser can still present an ID token as a bearer token. When authentication is enabled the app exposes a `<CONTEXT_ROOT>logout` endpoint (and a logout button in the UI) that clears the local session cookie. This is a *local* logout only — it does not call the identity provider's end-session endpoint, so an existing IdP session may sign the user straight back in.
 
 Other Environment Variables:
 
 - `DOCKER_API_VERSION`: adjust the Docker api version if the server needs it. (default: `(negotiated)`)
-- `TRUSTED_PROXIES`: comma-separated list of trusted reverse-proxy IP addresses or CIDR ranges. When set, the `X-Real-IP` and `X-Forwarded-For` headers are trusted for rate limiting purposes when the direct connection originates from a listed address. Plain IPs are accepted alongside CIDR notation (e.g. `10.0.0.0/8,192.168.1.5`). **Only set this if the application port is not directly reachable by untrusted clients**, otherwise clients can spoof their IP to bypass rate limits.
+- `TRUSTED_PROXIES`: comma-separated list of trusted reverse-proxy IP addresses or CIDR ranges. When set, the `X-Forwarded-For` and `X-Real-IP` headers are trusted for rate limiting purposes when the direct connection originates from a listed address. `X-Forwarded-For` is read from the right, skipping listed proxies, so an entry the client supplied itself is not believed; `X-Real-IP` is used only when there is no `X-Forwarded-For`. Plain IPs are accepted alongside CIDR notation (e.g. `10.0.0.0/8,192.168.1.5`). **Only set this if the application port is not directly reachable by untrusted clients**, otherwise clients can spoof their IP to bypass rate limits.
 
 ### Reverse Proxy Considerations
+
+The login and callback endpoints are limited to five requests a minute per client address. The app can only tell clients apart if it sees their addresses: a port published through the Swarm routing mesh (the default, as in the Usage examples) presents every client as the same ingress-network address, so all users share that one allowance. A reverse proxy that passes the client address, or publishing the port in `host` mode, avoids this.
 
 When running behind a reverse proxy (such as Traefik or nginx), set `TRUSTED_PROXIES` to the proxy's IP or subnet and `CONTEXT_ROOT` to the path prefix if the app is not served from `/`. For example:
 
@@ -96,9 +104,12 @@ The Docker API can expose potentially sensitive information. There are several m
 
 - Using the environment variables of `HIDE_ALL_CONFIGS`, `HIDE_ALL_ENVS`, `HIDE_ALL_MOUNTS`, and `HIDE_ALL_SECRETS` with the value of `true` will cause the application to strip the respective values from the output sent to the browser.
 - The environment variable `HIDE_LABELS` can be used to strip the output of various labels using a comma separated list of `container`, `network`, `node`, `service`. The value of `all` can also be used instead of specified all of the values.
-- To manage things on a service by service level, use labels on the desired service (with `io.github.jtgasper3.visualizer.hide-labels`) and environment variables (`io.github.jtgasper3.visualizer.hide-envs`) to specify a comma separated list of label or environment variables to remove from the service's specific labels or environment variable values from the output. The value is changes to "(sanitized)".
+- To manage things on a service by service level, use labels on the desired service (with `io.github.jtgasper3.visualizer.hide-labels`) and environment variables (`io.github.jtgasper3.visualizer.hide-envs`) to specify a comma separated list of label or environment variables to remove from the service's specific labels or environment variable values from the output. The value is changes to "(sanitized)". Both labels cover the service's tasks as well as the service itself.
+- A service's `PreviousSpec` (the copy of its spec from before the last update, which Swarm keeps for rollbacks) is never sent to the browser.
 
 For very granular control over uses that we didn't consider, use the environment variable of `SENSITIVE_DATA_PATHS` and a comma separated list of paths to remove. Examine the JSON output and find and specify the path to remove. Use `*` for arrays, and use single quotes to delimit values of property names that have embedded periods (i.e. `services.*.Spec.TaskTemplate.ContainerSpec.Labels.'desktop.docker.io/mounts/0/Source'`).
+
+The paths are checked at startup. One that cannot match anything in the data, such as a misspelled property name, stops the app with a message naming the entry, so that a typo does not leave the value exposed.
 
 
 ## Security Considerations
@@ -178,7 +189,7 @@ viz:
 
 ### Authentication is not authorization
 
-Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies that a request carries a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
+Setting `ENABLE_AUTHN=true` enables *authentication* only: it verifies at login that the user holds a valid, unexpired ID token issued by your configured identity provider for this client (the token's signature, `aud`, and `iss` are checked). It does **not** perform *authorization* — there is no per-user, group, or role check. **Any identity your IdP will issue such a token to can view the dashboard.**
 
 To control *who* may access the app, restrict it at the boundaries:
 

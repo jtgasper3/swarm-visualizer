@@ -2,6 +2,8 @@ package docker
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -17,11 +19,19 @@ type fakeSource struct {
 	tasks    []swarm.Task
 	networks []network.Summary
 	err      error
+	// servicesErr fails the service list alone.
+	servicesErr error
+	// tasksErr fails the task list alone.
+	tasksErr error
 }
 
-func (f fakeSource) Nodes(context.Context) ([]swarm.Node, error)         { return f.nodes, f.err }
-func (f fakeSource) Services(context.Context) ([]swarm.Service, error)   { return f.services, f.err }
-func (f fakeSource) Tasks(context.Context) ([]swarm.Task, error)         { return f.tasks, f.err }
+func (f fakeSource) Nodes(context.Context) ([]swarm.Node, error) { return f.nodes, f.err }
+func (f fakeSource) Services(context.Context) ([]swarm.Service, error) {
+	return f.services, errors.Join(f.err, f.servicesErr)
+}
+func (f fakeSource) Tasks(context.Context) ([]swarm.Task, error) {
+	return f.tasks, errors.Join(f.err, f.tasksErr)
+}
 func (f fakeSource) Networks(context.Context) ([]network.Summary, error) { return f.networks, f.err }
 
 func taskIDs(tasks []swarm.Task) map[string]bool {
@@ -32,12 +42,12 @@ func taskIDs(tasks []swarm.Task) map[string]bool {
 	return ids
 }
 
-func TestGetTasksInfo_FiltersRunningAndRecentlyStopped(t *testing.T) {
+func TestSelectTasks_FiltersRunningAndRecentlyStopped(t *testing.T) {
 	stoppedTaskCache = make(map[string]cachedTask)
 	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
 
 	now := time.Now()
-	src := fakeSource{tasks: []swarm.Task{
+	out := selectTasks([]swarm.Task{
 		// Running task: always included.
 		{ID: "run1", ServiceID: "s1", Slot: 1, DesiredState: swarm.TaskStateRunning,
 			Status: swarm.TaskStatus{State: swarm.TaskStateRunning}},
@@ -47,12 +57,7 @@ func TestGetTasksInfo_FiltersRunningAndRecentlyStopped(t *testing.T) {
 		// Long-stopped task: excluded as historical.
 		{ID: "old1", ServiceID: "s1", Slot: 3, DesiredState: swarm.TaskStateShutdown,
 			Status: swarm.TaskStatus{State: swarm.TaskStateComplete}, Meta: swarm.Meta{UpdatedAt: now.Add(-time.Hour)}},
-	}}
-
-	out, err := getTasksInfo(context.Background(), src, &config.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	})
 	ids := taskIDs(out)
 	if !ids["run1"] {
 		t.Error("expected running task run1 to be included")
@@ -65,29 +70,47 @@ func TestGetTasksInfo_FiltersRunningAndRecentlyStopped(t *testing.T) {
 	}
 }
 
-func TestGetTasksInfo_NewestStoppedPerSlotWins(t *testing.T) {
+func TestSelectTasks_NewestStoppedPerSlotWins(t *testing.T) {
 	stoppedTaskCache = make(map[string]cachedTask)
 	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
 
 	now := time.Now()
-	src := fakeSource{tasks: []swarm.Task{
+	out := selectTasks([]swarm.Task{
 		// Two failed tasks for the same service+slot; only the newest should show.
 		{ID: "old", ServiceID: "s1", Slot: 1, DesiredState: swarm.TaskStateShutdown,
 			Status: swarm.TaskStatus{State: swarm.TaskStateFailed}, Meta: swarm.Meta{UpdatedAt: now, CreatedAt: now.Add(-2 * time.Minute)}},
 		{ID: "new", ServiceID: "s1", Slot: 1, DesiredState: swarm.TaskStateShutdown,
 			Status: swarm.TaskStatus{State: swarm.TaskStateFailed}, Meta: swarm.Meta{UpdatedAt: now, CreatedAt: now.Add(-1 * time.Minute)}},
-	}}
-
-	out, err := getTasksInfo(context.Background(), src, &config.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	})
 	ids := taskIDs(out)
 	if !ids["new"] {
 		t.Error("expected the newest stopped task in the slot to be included")
 	}
 	if ids["old"] {
 		t.Error("expected the older stopped task in the same slot to be excluded")
+	}
+}
+
+// The stopped tasks are gathered in a map, whose iteration order is random.
+func TestSelectTasks_OrderIsStable(t *testing.T) {
+	stoppedTaskCache = make(map[string]cachedTask)
+	t.Cleanup(func() { stoppedTaskCache = make(map[string]cachedTask) })
+
+	now := time.Now()
+	var tasks []swarm.Task
+	for slot, id := range []string{"f", "b", "e", "a", "d", "c"} {
+		tasks = append(tasks, swarm.Task{ID: id, ServiceID: "s1", Slot: slot + 1, DesiredState: swarm.TaskStateShutdown,
+			Status: swarm.TaskStatus{State: swarm.TaskStateFailed}, Meta: swarm.Meta{UpdatedAt: now}})
+	}
+
+	first := selectTasks(tasks)
+	if len(first) != len(tasks) {
+		t.Fatalf("expected all %d stopped tasks, got %d", len(tasks), len(first))
+	}
+	for i := 0; i < 50; i++ {
+		if again := selectTasks(tasks); !reflect.DeepEqual(first, again) {
+			t.Fatalf("poll %d returned the same tasks in a different order", i)
+		}
 	}
 }
 
@@ -121,10 +144,13 @@ func TestGetNetworksInfo_RemovesIngressAndHidesLabels(t *testing.T) {
 
 func TestGetInfo_PropagatesError(t *testing.T) {
 	src := fakeSource{err: context.DeadlineExceeded}
-	if _, err := getTasksInfo(context.Background(), src, &config.Config{}); err == nil {
-		t.Error("expected error from getTasksInfo")
-	}
 	if _, err := getNodesInfo(context.Background(), src, &config.Config{}); err == nil {
 		t.Error("expected error from getNodesInfo")
+	}
+	if _, _, err := getServicesInfo(context.Background(), src, &config.Config{}); err == nil {
+		t.Error("expected error from getServicesInfo")
+	}
+	if newInspector(&config.Config{}, src, newHub(&config.Config{}, nil)).refreshTasks(context.Background()) {
+		t.Error("expected refreshTasks to report failure")
 	}
 }

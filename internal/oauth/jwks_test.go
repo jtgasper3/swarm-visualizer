@@ -13,9 +13,13 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jtgasper3/swarm-visualizer/internal/config"
 )
 
 // selfSignedDER returns a self-signed certificate (DER bytes) for the given
@@ -60,19 +64,38 @@ func ecX5c(t *testing.T) string {
 type testJWK struct {
 	kid string
 	x5c []string
+	// kty, use, n and e are published as given; empty ones are left out.
+	kty, use, n, e string
+}
+
+// rsaNE returns an RSA key with its modulus and exponent encoded as a JWK
+// publishes them.
+func rsaNE(t *testing.T) (*rsa.PrivateKey, string, string) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa key: %v", err)
+	}
+	n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
+	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())
+	return key, n, e
 }
 
 func jwksBody(t *testing.T, keys ...testJWK) string {
 	t.Helper()
 	type jwk struct {
+		Kty string   `json:"kty,omitempty"`
+		Use string   `json:"use,omitempty"`
 		Kid string   `json:"kid"`
-		X5c []string `json:"x5c"`
+		N   string   `json:"n,omitempty"`
+		E   string   `json:"e,omitempty"`
+		X5c []string `json:"x5c,omitempty"`
 	}
 	doc := struct {
 		Keys []jwk `json:"keys"`
 	}{}
 	for _, k := range keys {
-		doc.Keys = append(doc.Keys, jwk{Kid: k.kid, X5c: k.x5c})
+		doc.Keys = append(doc.Keys, jwk{Kty: k.kty, Use: k.use, Kid: k.kid, N: k.n, E: k.e, X5c: k.x5c})
 	}
 	b, err := json.Marshal(doc)
 	if err != nil {
@@ -236,5 +259,113 @@ func TestKeyStore_ThrottlesUnknownKid(t *testing.T) {
 	}
 	if h.count() != 1 {
 		t.Fatalf("expected on-demand refresh to be throttled, got %d fetches", h.count())
+	}
+}
+
+// Google, Cognito and others publish the modulus and exponent alone, with no
+// x5c certificate.
+func TestKeyStore_ParsesModulusAndExponent(t *testing.T) {
+	key, n, e := rsaNE(t)
+	h := &jwksHandler{body: jwksBody(t, testJWK{kid: "ne1", kty: "RSA", use: "sig", n: n, e: e})}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	ks := newKeyStore(srv.URL, srv.Client())
+	if err := ks.refresh(); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	got, ok := ks.key("ne1")
+	if !ok {
+		t.Fatal("expected key ne1 to be present")
+	}
+	if !got.Equal(&key.PublicKey) {
+		t.Fatal("returned key does not match the published modulus and exponent")
+	}
+
+	// A token signed with that key validates end to end.
+	a := &Authenticator{
+		cfg:  &config.Config{OAuthConfig: config.OAuthConfig{ClientID: "client-1", Issuer: "https://issuer.example.com"}},
+		keys: ks,
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": "https://issuer.example.com", "aud": "client-1", "sub": "user-1", "exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tok.Header["kid"] = "ne1"
+	signed, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if _, err := a.validateRawToken(signed); err != nil {
+		t.Fatalf("token signed by the published key was rejected: %v", err)
+	}
+}
+
+func TestKeyStore_KeySelection(t *testing.T) {
+	key, n, e := rsaNE(t)
+	certKey, cert := rsaX5c(t)
+	padded := n + strings.Repeat("=", (4-len(n)%4)%4)
+	even := base64.RawURLEncoding.EncodeToString(big.NewInt(65536).Bytes())
+	huge := base64.RawURLEncoding.EncodeToString(new(big.Int).Lsh(big.NewInt(1), 40).Bytes())
+
+	h := &jwksHandler{body: jwksBody(t,
+		// n and e are the key; a certificate alongside them is not consulted.
+		testJWK{kid: "both", n: n, e: e, x5c: []string{cert}},
+		testJWK{kid: "padded", n: padded, e: e},
+		testJWK{kid: "cert-only", x5c: []string{cert}},
+		// Not for verifying signatures.
+		testJWK{kid: "encryption", kty: "RSA", use: "enc", n: n, e: e},
+		testJWK{kid: "elliptic", kty: "EC", use: "sig"},
+		// Unusable key material.
+		testJWK{kid: "no-exponent", n: n},
+		testJWK{kid: "no-modulus", e: e},
+		testJWK{kid: "bad-base64", n: "!!!", e: e},
+		testJWK{kid: "even-exponent", n: n, e: even},
+		testJWK{kid: "huge-exponent", n: n, e: huge},
+		testJWK{kid: "nothing"},
+	)}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	ks := newKeyStore(srv.URL, srv.Client())
+	if err := ks.refresh(); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	want := map[string]*rsa.PublicKey{"both": &key.PublicKey, "padded": &key.PublicKey, "cert-only": certKey}
+	for kid, pub := range want {
+		if got, ok := ks.keys[kid]; !ok || !got.Equal(pub) {
+			t.Errorf("key %q: present=%v, or not the expected key", kid, ok)
+		}
+	}
+	for kid := range ks.keys {
+		if _, ok := want[kid]; !ok {
+			t.Errorf("key %q should have been skipped", kid)
+		}
+	}
+}
+
+// An error page is not a key set, even when it happens to be valid JSON.
+func TestKeyStore_RejectsErrorStatus(t *testing.T) {
+	_, n, e := rsaNE(t)
+	body := jwksBody(t, testJWK{kid: "ne1", n: n, e: e})
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	ks := newKeyStore(srv.URL, srv.Client())
+	if err := ks.refresh(); err != nil {
+		t.Fatalf("initial refresh: %v", err)
+	}
+
+	status = http.StatusServiceUnavailable
+	err := ks.refresh()
+	if err == nil || !strings.Contains(err.Error(), "503") {
+		t.Fatalf("error = %v, want one reporting the 503", err)
+	}
+	if _, ok := ks.keys["ne1"]; !ok {
+		t.Error("expected the previously loaded key to be retained")
 	}
 }
