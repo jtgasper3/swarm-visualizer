@@ -1,0 +1,46 @@
+[
+  {
+    "ID": "node-mgr-01",
+    "Version": { "Index": 101 },
+    "CreatedAt": "2026-01-10T08:00:00Z",
+    "UpdatedAt": "2026-03-01T09:30:00Z",
+    "Spec": { "Labels": { "zone": "a" }, "Role": "manager", "Availability": "active" },
+    "Description": {
+      "Hostname": "mgr-01",
+      "Platform": { "Architecture": "x86_64", "OS": "linux" },
+      "Resources": { "NanoCPUs": 8000000000, "MemoryBytes": 17179869184 },
+      "Engine": { "EngineVersion": "29.8.0" }
+    },
+    "Status": { "State": "ready", "Addr": "10.0.0.11" },
+    "ManagerStatus": { "Leader": true, "Reachability": "reachable", "Addr": "10.0.0.11:2377" }
+  },
+  {
+    "ID": "node-mgr-02",
+    "Version": { "Index": 102 },
+    "CreatedAt": "2026-01-10T08:05:00Z",
+    "UpdatedAt": "2026-03-01T09:30:00Z",
+    "Spec": { "Labels": { "zone": "b" }, "Role": "manager", "Availability": "active" },
+    "Description": {
+      "Hostname": "mgr-02",
+      "Platform": { "Architecture": "x86_64", "OS": "linux" },
+      "Resources": { "NanoCPUs": 8000000000, "MemoryBytes": 17179869184 },
+      "Engine": { "EngineVersion": "29.8.0" }
+    },
+    "Status": { "State": "ready", "Addr": "10.0.0.12" },
+    "ManagerStatus": { "Reachability": "reachable", "Addr": "10.0.0.12:2377" }
+  },
+  {
+    "ID": "node-wkr-01",
+    "Version": { "Index": 103 },
+    "CreatedAt": "2026-01-10T08:10:00Z",
+    "UpdatedAt": "2026-03-01T09:30:00Z",
+    "Spec": { "Labels": { "zone": "a" }, "Role": "worker", "Availability": "active" },
+    "Description": {
+      "Hostname": "wkr-01",
+      "Platform": { "Architecture": "aarch64", "OS": "linux" },
+      "Resources": { "NanoCPUs": 4000000000, "MemoryBytes": 8589934592 },
+      "Engine": { "EngineVersion": "29.8.0" }
+    },
+    "Status": { "State": "ready", "Addr": "10.0.0.21" }
+  }
+]

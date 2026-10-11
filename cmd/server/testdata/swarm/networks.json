@@ -1,0 +1,20 @@
+[
+  {
+    "Name": "ingress",
+    "Id": "net-ingress",
+    "Created": "2026-01-10T08:00:00Z",
+    "Scope": "swarm",
+    "Driver": "overlay",
+    "Ingress": true,
+    "IPAM": { "Driver": "default", "Config": [ { "Subnet": "10.0.0.0/24", "Gateway": "10.0.0.1" } ] }
+  },
+  {
+    "Name": "shop_frontend",
+    "Id": "net-frontend",
+    "Created": "2026-01-12T10:00:00Z",
+    "Scope": "swarm",
+    "Driver": "overlay",
+    "IPAM": { "Driver": "default", "Config": [ { "Subnet": "10.0.1.0/24", "Gateway": "10.0.1.1" } ] },
+    "Labels": { "com.docker.stack.namespace": "shop" }
+  }
+]
