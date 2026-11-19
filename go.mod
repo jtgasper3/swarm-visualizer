@@ -7,7 +7,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
-	golang.org/x/oauth2 v0.37.0
+	golang.org/x/oauth2 v0.38.0
 	golang.org/x/time v0.16.0
 )
 
