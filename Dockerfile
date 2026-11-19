@@ -1,7 +1,7 @@
 # Use the official Golang image as the build stage. It runs on the machine doing
 # the build, whatever the image is for: Go cross-compiles, so building the other
 # architecture does not have to happen under emulation.
-FROM --platform=$BUILDPLATFORM golang:1.27@sha256:e432b43af23a9328d56a7c499be0476810aa344acbcf65fc7c455d4ff5a40602 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27@sha256:205c7636d74e0ffbe3d007162df7d74f859f5a8c8322dfb9f907977686c126cf AS builder
 
 WORKDIR /app
 
